@@ -1,7 +1,15 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+import { initializeDatabase } from '../database/init';
 
 export default function RootLayout() {
+  
+  useEffect(() => {
+    // We execute our schema initialization as soon as the root layout mounts.
+    initializeDatabase();
+  }, []);
+
   return (
     <>
       <StatusBar style="light" />
