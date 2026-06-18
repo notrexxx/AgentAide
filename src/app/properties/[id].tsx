@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { addMedia, deleteMediaRecord, getMediaForProperty } from '../../database/mediaQueries';
 import { getPropertyById, getStaysForProperty } from '../../database/propertyQueries';
 import { Property, PropertyMedia, Stay } from '../../types';
+import { shareLocalPhoto, sharePropertyText } from '../../utils/whatsappFormatter';
 
 const { width } = Dimensions.get('window');
 
@@ -42,7 +43,7 @@ export default function PropertyDetailsScreen() {
   const handleAddPhoto = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'], // FIXED: Array string mapping to resolve SDK 54 warnings
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -61,9 +62,7 @@ export default function PropertyDetailsScreen() {
 
       addMedia(propertyId, permanentUri, 'photo');
       loadData();
-
     } catch (error) {
-      console.error('Media Error:', error);
       Alert.alert('Error', 'Failed to save the image to local storage.');
     }
   };
@@ -71,10 +70,7 @@ export default function PropertyDetailsScreen() {
   const handleDeletePhoto = (mediaId: number, uri: string) => {
     Alert.alert('Delete Photo', 'Remove this image from the property?', [
       { text: 'Cancel', style: 'cancel' },
-      { 
-        text: 'Delete', 
-        style: 'destructive', 
-        onPress: async () => {
+      { text: 'Delete', style: 'destructive', onPress: async () => {
           try {
             await FileSystem.deleteAsync(uri, { idempotent: true });
             deleteMediaRecord(mediaId);
@@ -100,11 +96,15 @@ export default function PropertyDetailsScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.headerIconButton}>
           <Ionicons name="arrow-back" size={24} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{property.name}</Text>
-        <View style={{ width: 40 }} />
+        
+        {/* SPRINT 3: Global Property Text Share Button */}
+        <TouchableOpacity onPress={() => sharePropertyText(property)} style={styles.headerIconButton}>
+          <Ionicons name="share-outline" size={24} color="#3B82F6" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -124,11 +124,20 @@ export default function PropertyDetailsScreen() {
                 <TouchableOpacity 
                   key={media.id} 
                   onLongPress={() => handleDeletePhoto(media.id, media.uri)}
-                  activeOpacity={0.8}
+                  activeOpacity={0.9}
                 >
                   <Image source={{ uri: media.uri }} style={styles.galleryImage} />
+                  
+                  {/* SPRINT 3: Native Photo Share Trigger */}
+                  <TouchableOpacity 
+                    style={styles.shareOverlay} 
+                    onPress={() => shareLocalPhoto(media.uri)}
+                  >
+                    <Ionicons name="share-social" size={18} color="#0F172A" />
+                  </TouchableOpacity>
+
                   <View style={styles.deleteOverlay}>
-                    <Ionicons name="trash" size={16} color="#FFFFFF" />
+                    <Ionicons name="trash" size={14} color="#FFFFFF" />
                   </View>
                 </TouchableOpacity>
               ))}
@@ -139,7 +148,7 @@ export default function PropertyDetailsScreen() {
               <Text style={styles.mediaPlaceholderText}>No photos attached to this property.</Text>
             </View>
           )}
-          {mediaList.length > 0 && <Text style={styles.helperText}>Long-press any photo to delete it.</Text>}
+          {mediaList.length > 0 && <Text style={styles.helperText}>Tap the share icon to send photo. Long-press to delete.</Text>}
         </View>
 
         <View style={styles.statusRow}>
@@ -211,13 +220,12 @@ export default function PropertyDetailsScreen() {
   );
 }
 
-// Ensure the styles object remains intact from your previous implementation
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F8FAFC' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   errorText: { color: '#EF4444', fontSize: 16, fontWeight: '600' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 56, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
-  backButton: { width: 40, height: 40, justifyContent: 'center' },
+  headerIconButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', flex: 1, textAlign: 'center' },
   scrollContent: { padding: 16 },
   mediaSection: { marginBottom: 20 },
@@ -226,7 +234,11 @@ const styles = StyleSheet.create({
   addMediaText: { fontSize: 14, fontWeight: '600', color: '#3B82F6' },
   galleryScroll: { paddingBottom: 8 },
   galleryImage: { width: width * 0.7, height: 200, borderRadius: 12, marginRight: 12, backgroundColor: '#E2E8F0' },
+  
+  // SPRINT 3: Media Share Overlay
+  shareOverlay: { position: 'absolute', top: 12, right: 24, backgroundColor: 'rgba(255, 255, 255, 0.9)', padding: 8, borderRadius: 20, elevation: 3 },
   deleteOverlay: { position: 'absolute', bottom: 12, right: 24, backgroundColor: 'rgba(239, 68, 68, 0.9)', padding: 6, borderRadius: 12 },
+  
   helperText: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontStyle: 'italic' },
   mediaContainer: { height: 160, backgroundColor: '#F1F5F9', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', borderWidth: 2, borderColor: '#CBD5E1' },
   mediaPlaceholderText: { color: '#64748B', fontSize: 13, marginTop: 8, fontWeight: '500' },

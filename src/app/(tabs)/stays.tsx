@@ -1,3 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
     Alert,
@@ -10,17 +13,14 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
-// FIXED: Swapped to the modern Safe Area context provider
-import { Ionicons } from '@expo/vector-icons';
-import * as Clipboard from 'expo-clipboard';
-import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import HeroHeader from '../../components/HeroHeader';
 import { getProperties } from '../../database/propertyQueries';
 import { addStay, deleteStay, getStays, StayWithProperty } from '../../database/staysQueries';
 import { Property } from '../../types';
 import { parseTicketText } from '../../utils/ticketParser';
-import { shareToWhatsApp } from '../../utils/whatsappFormatter';
+import { shareStayToClient, shareStayToDriver } from '../../utils/whatsappFormatter';
 
 export default function StaysScreen() {
   const [stays, setStays] = useState<StayWithProperty[]>([]);
@@ -110,10 +110,17 @@ export default function StaysScreen() {
       </View>
       
       <View style={styles.cardFooter}>
-        <TouchableOpacity style={styles.whatsappButton} onPress={() => shareToWhatsApp(item)}>
-          <Ionicons name="logo-whatsapp" size={18} color="#FFFFFF" />
-          <Text style={styles.whatsappButtonText}> Share Details via WhatsApp</Text>
-        </TouchableOpacity>
+        <View style={styles.dualActionRow}>
+          <TouchableOpacity style={styles.clientButton} onPress={() => shareStayToClient(item)}>
+            <Ionicons name="logo-whatsapp" size={16} color="#FFFFFF" />
+            <Text style={styles.actionButtonText}> Client</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.driverButton} onPress={() => shareStayToDriver(item)}>
+            <Ionicons name="car-outline" size={18} color="#0F172A" />
+            <Text style={styles.driverButtonText}> Driver</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -127,6 +134,16 @@ export default function StaysScreen() {
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderStayCard}
           contentContainerStyle={styles.listContent}
+          // NEW: Reusable Hero component injected as a structural list header
+          ListHeaderComponent={
+            <HeroHeader 
+              title="Active Stays"
+              subtitle="Track guest check-ins, flight schedules, and coordinate partner dispatches."
+              iconName="calendar-outline"
+              statLabel="Current Active Stays"
+              statValue={stays.length}
+            />
+          }
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="calendar-clear-outline" size={48} color="#CBD5E1" />
@@ -208,19 +225,22 @@ export default function StaysScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F1F5F9' },
-  container: { flex: 1 },
-  listContent: { padding: 16, paddingBottom: 100 },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  safeArea: { flex: 1, backgroundColor: '#0F172A' }, // Changed to Midnight Slate
+  container: { flex: 1, backgroundColor: '#F1F5F9' },
+  listContent: { paddingBottom: 100 },
+  card: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 12, marginHorizontal: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   propertyName: { fontSize: 18, fontWeight: '700', color: '#0F172A', flex: 1 },
   iconButton: { padding: 4 },
   row: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   infoText: { fontSize: 14, color: '#475569', marginLeft: 4 },
   cardFooter: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 16 },
-  whatsappButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#25D366', paddingVertical: 10, borderRadius: 8 },
-  whatsappButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', marginLeft: 6 },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
+  dualActionRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  clientButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#25D366', paddingVertical: 10, borderRadius: 8 },
+  actionButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', marginLeft: 4 },
+  driverButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0', paddingVertical: 10, borderRadius: 8 },
+  driverButtonText: { color: '#0F172A', fontSize: 14, fontWeight: '700', marginLeft: 4 },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 60 },
   emptyStateText: { fontSize: 18, fontWeight: '600', color: '#475569', marginTop: 16 },
   fab: { position: 'absolute', bottom: 24, right: 24, width: 60, height: 60, borderRadius: 30, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },

@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import HeroHeader from '../../components/HeroHeader';
 import { addMedia } from '../../database/mediaQueries';
 import { addProperty, deleteProperty, getProperties } from '../../database/propertyQueries';
 import { Property } from '../../types';
@@ -35,7 +36,6 @@ export default function PropertiesHubScreen() {
   const [maxGuests, setMaxGuests] = useState('');
   const [petsAllowed, setPetsAllowed] = useState(false);
   
-  // Temporary Media State (Holds images before the property is created)
   const [tempPhotos, setTempPhotos] = useState<string[]>([]);
 
   useFocusEffect(
@@ -51,7 +51,7 @@ export default function PropertiesHubScreen() {
   const handleAddTempPhoto = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'], // FIXED: Modern SDK 54 Array Syntax
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -76,7 +76,6 @@ export default function PropertiesHubScreen() {
     }
     
     try {
-      // 1. Create the property and get the new ID immediately
       const newPropertyId = addProperty(
         name, 
         isAirbnb, 
@@ -87,7 +86,6 @@ export default function PropertiesHubScreen() {
         petsAllowed
       );
 
-      // 2. If there are photos, move them to permanent storage and link them to the new ID
       if (tempPhotos.length > 0) {
         for (const uri of tempPhotos) {
           const fileName = `property_${newPropertyId}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
@@ -102,7 +100,6 @@ export default function PropertiesHubScreen() {
         }
       }
       
-      // 3. Reset State
       setName('');
       setAddress('');
       setIsAirbnb(false);
@@ -163,6 +160,7 @@ export default function PropertiesHubScreen() {
   );
 
   return (
+    // FIXED: Changing background color to match the Hero header integrates the top notch cleanly
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.container}>
         
@@ -171,6 +169,16 @@ export default function PropertiesHubScreen() {
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderPropertyCard}
           contentContainerStyle={styles.listContent}
+          // NEW: Reusable Hero component injected as a structural list header
+          ListHeaderComponent={
+            <HeroHeader 
+              title="Properties Hub"
+              subtitle="Manage your physical real estate portfolio and localized rental instances."
+              iconName="business-outline"
+              statLabel="Total Managed Assets"
+              statValue={properties.length}
+            />
+          }
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="folder-open-outline" size={48} color="#CBD5E1" />
@@ -194,8 +202,6 @@ export default function PropertiesHubScreen() {
               </View>
 
               <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
-                
-                {/* Temp Media Selection UI */}
                 <View style={styles.mediaSection}>
                   <Text style={styles.label}>Property Photos</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tempGalleryScroll}>
@@ -264,10 +270,10 @@ export default function PropertiesHubScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F1F5F9' },
-  container: { flex: 1 },
-  listContent: { padding: 16, paddingBottom: 100 },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 12, elevation: 2 },
+  safeArea: { flex: 1, backgroundColor: '#0F172A' }, // Changed to Midnight Slate
+  container: { flex: 1, backgroundColor: '#F1F5F9' }, // Keeps content area light gray
+  listContent: { paddingBottom: 100 },
+  card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 12, marginHorizontal: 16, elevation: 2 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
@@ -275,16 +281,14 @@ const styles = StyleSheet.create({
   cardAddress: { fontSize: 14, color: '#64748B', marginBottom: 12 },
   specsRow: { flexDirection: 'row', gap: 12, backgroundColor: '#F8FAFC', padding: 8, borderRadius: 8 },
   specText: { fontSize: 13, fontWeight: '600', color: '#475569' },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 60 },
   emptyStateText: { fontSize: 16, color: '#64748B' },
-  fab: { position: 'absolute', bottom: 24, right: 24, width: 60, height: 60, borderRadius: 30, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' },
+  fab: { position: 'absolute', bottom: 24, right: 24, width: 60, height: 60, borderRadius: 30, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center', elevation: 5 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A' },
   formScroll: { marginBottom: 20 },
-  
-  // Creation Media Styles
   mediaSection: { marginBottom: 16 },
   tempGalleryScroll: { paddingVertical: 4 },
   addPhotoSquare: { width: 70, height: 70, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
@@ -292,7 +296,6 @@ const styles = StyleSheet.create({
   tempImageContainer: { marginRight: 10, position: 'relative' },
   tempImage: { width: 70, height: 70, borderRadius: 8, backgroundColor: '#E2E8F0' },
   removeTempPhotoBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#EF4444', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', elevation: 2 },
-
   label: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 6 },
   input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 12, fontSize: 16, color: '#0F172A', marginBottom: 14 },
   textArea: { minHeight: 70, textAlignVertical: 'top' },
