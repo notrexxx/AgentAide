@@ -3,9 +3,6 @@ import { Alert, Linking, Share } from 'react-native';
 import { StayWithProperty } from '../database/staysQueries';
 import { Property } from '../types';
 
-/**
- * 1. CLIENT MESSAGE (Hospitality Focused)
- */
 export async function shareStayToClient(stay: StayWithProperty) {
   const message = 
 `Hello! 👋\n\n` +
@@ -19,9 +16,6 @@ export async function shareStayToClient(stay: StayWithProperty) {
   await executeDeepLink(message);
 }
 
-/**
- * 2. DRIVER MESSAGE (Logistics Focused)
- */
 export async function shareStayToDriver(stay: StayWithProperty) {
   const message = 
 `🚗 *New Pickup Dispatch*\n\n` +
@@ -34,11 +28,9 @@ export async function shareStayToDriver(stay: StayWithProperty) {
   await executeDeepLink(message);
 }
 
-/**
- * 3. PROPERTY DOSSIER (Native Text Share Sheet)
- */
-export async function sharePropertyText(property: Property) {
-  const message = 
+// UPGRADED: Now accepts an optional public cloud URL parameter!
+export async function sharePropertyText(property: Property, cloudUrl?: string) {
+  let message = 
 `🏡 *Property Spotlight: ${property.name}*\n\n` +
 `📍 *Location:* ${property.address || 'Contact for exact address'}\n` +
 `🛏️ *Rooms:* ${property.roomsCount || 0}\n` +
@@ -46,19 +38,23 @@ export async function sharePropertyText(property: Property) {
 `🐾 *Pets:* ${property.petsAllowed ? 'Allowed' : 'Not Allowed'}\n\n` +
 `📝 *Details:*\n${property.description || 'A beautiful, fully-managed property.'}`;
 
+  // If we have a cloud URL, we append it to the bottom. WhatsApp will automatically read this link and generate an image preview card!
+  if (cloudUrl) {
+    message += `\n\n🖼️ *View Property Image:*\n${cloudUrl}`;
+  }
+
   try {
+    // For properties, we still use the OS Native Share Sheet to maximize compatibility 
+    // across email, iMessage, and WhatsApp.
     await Share.share({
       message,
-      title: property.name, // Used by some Android email/share targets
+      title: property.name, 
     });
   } catch (error) {
     Alert.alert('Sharing Error', 'Failed to share property details.');
   }
 }
 
-/**
- * 4. NATIVE MEDIA SHARE (Photos)
- */
 export async function shareLocalPhoto(uri: string) {
   try {
     const isAvailable = await Sharing.isAvailableAsync();
@@ -66,7 +62,6 @@ export async function shareLocalPhoto(uri: string) {
       Alert.alert('Unavailable', 'Sharing is not supported on this device.');
       return;
     }
-    // This pops open the native iOS/Android share sheet specifically for files
     await Sharing.shareAsync(uri, {
       dialogTitle: 'Share Property Photo',
       mimeType: 'image/jpeg',
@@ -76,9 +71,6 @@ export async function shareLocalPhoto(uri: string) {
   }
 }
 
-/**
- * Reusable Deep Link Executor
- */
 async function executeDeepLink(message: string) {
   const url = `whatsapp://send?text=${encodeURIComponent(message)}`;
   try {
@@ -86,10 +78,7 @@ async function executeDeepLink(message: string) {
     if (canOpen) {
       await Linking.openURL(url);
     } else {
-      Alert.alert(
-        'WhatsApp Not Found', 
-        'WhatsApp is not installed on this device. Please install it to share via deep link.'
-      );
+      Alert.alert('WhatsApp Not Found', 'WhatsApp is not installed on this device.');
     }
   } catch (error) {
     console.error('Deep Link Error:', error);
