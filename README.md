@@ -7,7 +7,7 @@
 ![TypeScript](https://img.shields.io/badge/Language-TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 
 <div align="center">
-  <img src="./assets/hero-image.png" alt="AgentAide Mobile Dashboard" width="400" />
+  <img src="https://raw.githubusercontent.com/notrexxx/AgentAide/main/assets/images/hero-image.png" alt="AgentAide Mobile Dashboard" width="400" />
 </div>
 <br />
 
