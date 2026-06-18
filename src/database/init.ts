@@ -1,12 +1,19 @@
 import * as SQLite from 'expo-sqlite';
 
-// We use the modern synchronous API for immediate local access
 export const db = SQLite.openDatabaseSync('agentaide.db');
+
+// Helper function to safely apply schema upgrades without crashing if they already exist
+const applyMigration = (query: string) => {
+  try {
+    db.execSync(query);
+  } catch (error) {
+    // If the column already exists, SQLite throws an error. We catch and ignore it.
+    // This is a simple, effective migration strategy for local MVP databases.
+  }
+};
 
 export function initializeDatabase() {
   try {
-    // WAL mode significantly improves concurrent read/write performance locally
-    // Foreign keys must be explicitly turned on in SQLite
     db.execSync(`
       PRAGMA journal_mode = WAL;
       PRAGMA foreign_keys = ON;
@@ -31,8 +38,26 @@ export function initializeDatabase() {
         flightInfo TEXT,
         FOREIGN KEY (propertyId) REFERENCES properties (id) ON DELETE CASCADE
       );
+
+      -- NEW: Media table to relationally store infinite photos/videos per property
+      CREATE TABLE IF NOT EXISTS property_media (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        propertyId INTEGER NOT NULL,
+        uri TEXT NOT NULL,
+        mediaType TEXT NOT NULL,
+        FOREIGN KEY (propertyId) REFERENCES properties (id) ON DELETE CASCADE
+      );
     `);
-    console.log('Database and schema initialized successfully.');
+
+    // --- v0.6.0 SCHEMA MIGRATIONS ---
+    // We attempt to add the new columns. If the app is run on a fresh device, 
+    // the above CREATE TABLE makes them, and these will safely fail.
+    applyMigration(`ALTER TABLE properties ADD COLUMN description TEXT;`);
+    applyMigration(`ALTER TABLE properties ADD COLUMN roomsCount INTEGER DEFAULT 0;`);
+    applyMigration(`ALTER TABLE properties ADD COLUMN maxGuests INTEGER DEFAULT 1;`);
+    applyMigration(`ALTER TABLE properties ADD COLUMN petsAllowed INTEGER DEFAULT 0;`);
+
+    console.log('Database and schema initialized/migrated successfully.');
   } catch (error) {
     console.error('CRITICAL: Failed to initialize database:', error);
   }

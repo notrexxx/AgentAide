@@ -1,11 +1,12 @@
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
   Alert,
   FlatList,
   Modal,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -13,21 +14,22 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-// FIXED: Double dots to go up two directories from (tabs) -> app -> src
 import { addProperty, deleteProperty, getProperties } from '../../database/propertyQueries';
 import { Property } from '../../types';
 
 export default function PropertiesHubScreen() {
-  // --- STATE ---
   const [properties, setProperties] = useState<Property[]>([]);
   const [isModalVisible, setModalVisible] = useState(false);
   
-  // Form State
+  // Enriched Form State
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [isAirbnb, setIsAirbnb] = useState(false);
+  const [description, setDescription] = useState('');
+  const [roomsCount, setRoomsCount] = useState('');
+  const [maxGuests, setMaxGuests] = useState('');
+  const [petsAllowed, setPetsAllowed] = useState(false);
 
-  // --- DATA FETCHING ---
   useFocusEffect(
     useCallback(() => {
       loadData();
@@ -35,11 +37,9 @@ export default function PropertiesHubScreen() {
   );
 
   const loadData = () => {
-    const data = getProperties();
-    setProperties(data);
+    setProperties(getProperties());
   };
 
-  // --- HANDLERS ---
   const handleSaveProperty = () => {
     if (!name.trim()) {
       Alert.alert('Validation Error', 'Property Name is required.');
@@ -47,10 +47,24 @@ export default function PropertiesHubScreen() {
     }
     
     try {
-      addProperty(name, isAirbnb, address);
+      addProperty(
+        name, 
+        isAirbnb, 
+        address, 
+        description, 
+        parseInt(roomsCount) || 0, 
+        parseInt(maxGuests) || 1, 
+        petsAllowed
+      );
+      
+      // Reset State
       setName('');
       setAddress('');
       setIsAirbnb(false);
+      setDescription('');
+      setRoomsCount('');
+      setMaxGuests('');
+      setPetsAllowed(false);
       setModalVisible(false);
       loadData();
     } catch (error) {
@@ -64,21 +78,18 @@ export default function PropertiesHubScreen() {
       `Are you sure you want to delete "${propertyName}"? All associated stays will be lost forever.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive', 
-          onPress: () => {
-            deleteProperty(id);
-            loadData();
-          }
-        }
+        { text: 'Delete', style: 'destructive', onPress: () => { deleteProperty(id); loadData(); }}
       ]
     );
   };
 
-  // --- UI COMPONENTS ---
   const renderPropertyCard = ({ item }: { item: Property }) => (
-    <View style={styles.card}>
+    <TouchableOpacity 
+      style={styles.card} 
+      // FIXED: Explicitly casting the route bypasses the stale TypeScript generated dictionary
+      onPress={() => router.push(`/properties/${item.id}` as any)}
+      activeOpacity={0.7}
+    >
       <View style={styles.cardHeader}>
         <View style={styles.titleRow}>
           {item.isAirbnb ? (
@@ -93,16 +104,17 @@ export default function PropertiesHubScreen() {
         </TouchableOpacity>
       </View>
       {item.address ? (
-        <Text style={styles.cardAddress}>
+        <Text style={styles.cardAddress} numberOfLines={1}>
           <Ionicons name="location-outline" size={14} color="#64748B" /> {item.address}
         </Text>
       ) : null}
-      <View style={styles.badgeContainer}>
-        <View style={[styles.badge, item.isActive ? styles.badgeActive : styles.badgeInactive]}>
-          <Text style={styles.badgeText}>{item.isActive ? 'Active' : 'Inactive'}</Text>
-        </View>
+      
+      <View style={styles.specsRow}>
+        <Text style={styles.specText}>🛏️ {item.roomsCount || 0} Rooms</Text>
+        <Text style={styles.specText}>👥 Max {item.maxGuests || 1}</Text>
+        <Text style={styles.specText}>{item.petsAllowed ? '🐾 Pets Ok' : '🚫 No Pets'}</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -118,7 +130,6 @@ export default function PropertiesHubScreen() {
             <View style={styles.emptyState}>
               <Ionicons name="folder-open-outline" size={48} color="#CBD5E1" />
               <Text style={styles.emptyStateText}>No properties found.</Text>
-              <Text style={styles.emptyStateSubtext}>Tap the button below to add your first property.</Text>
             </View>
           }
         />
@@ -127,52 +138,57 @@ export default function PropertiesHubScreen() {
           <Ionicons name="add" size={30} color="#FFFFFF" />
         </TouchableOpacity>
 
-        <Modal
-          visible={isModalVisible}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setModalVisible(false)}
-        >
+        <Modal visible={isModalVisible} animationType="slide" transparent={true}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>New Property</Text>
+                <Text style={styles.modalTitle}>New Property Asset</Text>
                 <TouchableOpacity onPress={() => setModalVisible(false)}>
                   <Ionicons name="close" size={28} color="#64748B" />
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.label}>Property Name *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., Downtown Loft"
-                placeholderTextColor="#94A3B8"
-                value={name}
-                onChangeText={setName}
-              />
+              <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
+                <Text style={styles.label}>Property Name *</Text>
+                <TextInput style={styles.input} placeholder="e.g., Oceanfront Villa" value={name} onChangeText={setName} />
 
-              <Text style={styles.label}>Address</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., 123 Main St, Apt 4B"
-                placeholderTextColor="#94A3B8"
-                value={address}
-                onChangeText={setAddress}
-              />
+                <Text style={styles.label}>Address</Text>
+                <TextInput style={styles.input} placeholder="Full address" value={address} onChangeText={setAddress} />
 
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Is this an Airbnb?</Text>
-                <Switch
-                  value={isAirbnb}
-                  onValueChange={setIsAirbnb}
-                  trackColor={{ false: '#CBD5E1', true: '#FF5A5F' }}
-                  thumbColor="#FFFFFF"
+                <Text style={styles.label}>Description</Text>
+                <TextInput 
+                  style={[styles.input, styles.textArea]} 
+                  placeholder="Key property details..." 
+                  multiline numberOfLines={3} 
+                  value={description} 
+                  onChangeText={setDescription} 
                 />
-              </View>
 
-              <TouchableOpacity style={styles.saveButton} onPress={handleSaveProperty}>
-                <Text style={styles.saveButtonText}>Save Property</Text>
-              </TouchableOpacity>
+                <View style={styles.rowInputs}>
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={styles.label}>Rooms Count</Text>
+                    <TextInput style={styles.input} keyboardType="numeric" placeholder="0" value={roomsCount} onChangeText={setRoomsCount} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.label}>Max Capacity</Text>
+                    <TextInput style={styles.input} keyboardType="numeric" placeholder="1" value={maxGuests} onChangeText={setMaxGuests} />
+                  </View>
+                </View>
+
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>Allow Pets?</Text>
+                  <Switch value={petsAllowed} onValueChange={setPetsAllowed} trackColor={{ false: '#CBD5E1', true: '#10B981' }} />
+                </View>
+
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>List as Airbnb Instance?</Text>
+                  <Switch value={isAirbnb} onValueChange={setIsAirbnb} trackColor={{ false: '#CBD5E1', true: '#FF5A5F' }} />
+                </View>
+
+                <TouchableOpacity style={styles.saveButton} onPress={handleSaveProperty}>
+                  <Text style={styles.saveButtonText}>Create Asset Record</Text>
+                </TouchableOpacity>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -186,39 +202,28 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F1F5F9' },
   container: { flex: 1 },
   listContent: { padding: 16, paddingBottom: 100 },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
-  emptyStateText: { fontSize: 18, fontWeight: '600', color: '#475569', marginTop: 16 },
-  emptyStateSubtext: { fontSize: 14, color: '#94A3B8', marginTop: 8, textAlign: 'center' },
-  card: {
-    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-  },
+  card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 12, elevation: 2 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
   deleteButton: { padding: 4 },
   cardAddress: { fontSize: 14, color: '#64748B', marginBottom: 12 },
-  badgeContainer: { flexDirection: 'row' },
-  badge: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6 },
-  badgeActive: { backgroundColor: '#DCFCE7' },
-  badgeInactive: { backgroundColor: '#F1F5F9' },
-  badgeText: { fontSize: 12, fontWeight: '600', color: '#166534' },
-  fab: {
-    position: 'absolute', bottom: 24, right: 24, width: 60, height: 60,
-    borderRadius: 30, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 5,
-  },
+  specsRow: { flexDirection: 'row', gap: 12, backgroundColor: '#F8FAFC', padding: 8, borderRadius: 8 },
+  specText: { fontSize: 13, fontWeight: '600', color: '#475569' },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
+  emptyStateText: { fontSize: 16, color: '#64748B' },
+  fab: { position: 'absolute', bottom: 24, right: 24, width: 60, height: 60, borderRadius: 30, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: '50%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  modalTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A' },
-  label: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 8 },
-  input: {
-    backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8,
-    padding: 12, fontSize: 16, color: '#0F172A', marginBottom: 20,
-  },
-  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 },
-  switchLabel: { fontSize: 16, fontWeight: '500', color: '#0F172A' },
-  saveButton: { backgroundColor: '#0F172A', padding: 16, borderRadius: 12, alignItems: 'center' },
-  saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '85%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A' },
+  formScroll: { marginBottom: 20 },
+  label: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 6 },
+  input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 12, fontSize: 16, color: '#0F172A', marginBottom: 14 },
+  textArea: { minHeight: 70, textAlignVertical: 'top' },
+  rowInputs: { flexDirection: 'row' },
+  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  switchLabel: { fontSize: 15, fontWeight: '500', color: '#334155' },
+  saveButton: { backgroundColor: '#0F172A', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' }
 });
