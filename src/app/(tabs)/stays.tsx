@@ -5,6 +5,7 @@ import React, { useCallback, useState } from 'react';
 import {
     Alert,
     FlatList,
+    Image,
     Modal,
     ScrollView,
     StyleSheet,
@@ -19,13 +20,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import HeroHeader from '../../components/HeroHeader';
 import { getProperties } from '../../database/propertyQueries';
 import { addStay, deleteStay, getStays, StayWithProperty } from '../../database/staysQueries';
-import { Colors } from '../../theme/colors'; // NEW: Import Theme Engine
+import { Colors } from '../../theme/colors';
 import { Property } from '../../types';
 import { parseTicketText } from '../../utils/ticketParser';
 import { shareStayToClient, shareStayToDriver } from '../../utils/whatsappFormatter';
 
 export default function StaysScreen() {
-  // NEW: Initialize Theme Engine
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = Colors[isDark ? 'dark' : 'light'];
@@ -97,34 +97,45 @@ export default function StaysScreen() {
 
   const renderStayCard = ({ item }: { item: StayWithProperty }) => (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
-      <View style={styles.cardHeader}>
-        <Text style={[styles.propertyName, { color: theme.text }]}>{item.propertyName}</Text>
-        <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.iconButton}>
-          <Ionicons name="trash-outline" size={20} color={theme.danger} />
-        </TouchableOpacity>
-      </View>
-      <View style={styles.row}>
-        <Ionicons name="airplane-outline" size={16} color={theme.subText} />
-        <Text style={[styles.infoText, { color: theme.subText }]}> Flight: {item.flightInfo || 'N/A'}  •  Arrival: {item.arrivalDate}</Text>
-      </View>
-      <View style={styles.row}>
-        <Ionicons name="people-outline" size={16} color={theme.subText} />
-        <Text style={[styles.infoText, { color: theme.subText }]}> Guests: {item.guestCount}</Text>
-      </View>
       
-      <View style={[styles.cardFooter, { borderTopColor: theme.border }]}>
-        <View style={styles.dualActionRow}>
-          {/* Client button keeps WhatsApp green for brand recognition */}
-          <TouchableOpacity style={styles.clientButton} onPress={() => shareStayToClient(item)}>
-            <Ionicons name="logo-whatsapp" size={16} color="#FFFFFF" />
-            <Text style={styles.actionButtonText}> Client</Text>
+      {/* NEW: Edge-to-Edge Image Banner for Stays */}
+      {item.mainImageUri ? (
+        <Image source={{ uri: item.mainImageUri }} style={styles.cardBanner} />
+      ) : (
+        <View style={[styles.cardBannerPlaceholder, { backgroundColor: theme.background }]}>
+          <Ionicons name="image-outline" size={32} color={theme.subText} />
+        </View>
+      )}
+
+      {/* NEW: Padded Card Body */}
+      <View style={styles.cardBody}>
+        <View style={styles.cardHeader}>
+          <Text style={[styles.propertyName, { color: theme.text }]}>{item.propertyName}</Text>
+          <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.iconButton}>
+            <Ionicons name="trash-outline" size={20} color={theme.danger} />
           </TouchableOpacity>
-          
-          {/* Driver button adapts to theme */}
-          <TouchableOpacity style={[styles.driverButton, { backgroundColor: theme.background, borderColor: theme.border }]} onPress={() => shareStayToDriver(item)}>
-            <Ionicons name="car-outline" size={18} color={theme.text} />
-            <Text style={[styles.driverButtonText, { color: theme.text }]}> Driver</Text>
-          </TouchableOpacity>
+        </View>
+        <View style={styles.row}>
+          <Ionicons name="airplane-outline" size={16} color={theme.subText} />
+          <Text style={[styles.infoText, { color: theme.subText }]}> Flight: {item.flightInfo || 'N/A'}  •  Arrival: {item.arrivalDate}</Text>
+        </View>
+        <View style={styles.row}>
+          <Ionicons name="people-outline" size={16} color={theme.subText} />
+          <Text style={[styles.infoText, { color: theme.subText }]}> Guests: {item.guestCount}</Text>
+        </View>
+        
+        <View style={[styles.cardFooter, { borderTopColor: theme.border }]}>
+          <View style={styles.dualActionRow}>
+            <TouchableOpacity style={styles.clientButton} onPress={() => shareStayToClient(item)}>
+              <Ionicons name="logo-whatsapp" size={16} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}> Client</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={[styles.driverButton, { backgroundColor: theme.background, borderColor: theme.border }]} onPress={() => shareStayToDriver(item)}>
+              <Ionicons name="car-outline" size={18} color={theme.text} />
+              <Text style={[styles.driverButtonText, { color: theme.text }]}> Driver</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </View>
@@ -138,7 +149,7 @@ export default function StaysScreen() {
           data={stays}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderStayCard}
-          contentContainerStyle={styles.listContent} // Accounts for glass tab bar
+          contentContainerStyle={styles.listContent}
           ListHeaderComponent={
             <HeroHeader 
               title="Active Stays"
@@ -195,7 +206,7 @@ export default function StaysScreen() {
                         style={[
                           styles.propertyPill, 
                           { backgroundColor: theme.background, borderColor: theme.border },
-                          selectedPropertyId === prop.id && { backgroundColor: theme.primary + '20', borderColor: theme.primary } // Adding '20' creates a 20% opacity hex code
+                          selectedPropertyId === prop.id && { backgroundColor: theme.primary + '20', borderColor: theme.primary }
                         ]}
                         onPress={() => setSelectedPropertyId(prop.id)}
                       >
@@ -239,8 +250,14 @@ export default function StaysScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   container: { flex: 1 },
-  listContent: { paddingBottom: 120 }, // FIXED: Accounts for glass tab bar
-  card: { borderRadius: 12, padding: 16, marginBottom: 12, marginHorizontal: 16, elevation: 2 },
+  listContent: { paddingBottom: 120 }, 
+  
+  // NEW: Updated Card styles for Edge-to-Edge Banners
+  card: { borderRadius: 16, marginBottom: 16, marginHorizontal: 16, elevation: 3, overflow: 'hidden' },
+  cardBanner: { width: '100%', height: 120, resizeMode: 'cover' },
+  cardBannerPlaceholder: { width: '100%', height: 120, alignItems: 'center', justifyContent: 'center' },
+  cardBody: { padding: 16 },
+
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   propertyName: { fontSize: 18, fontWeight: '700', flex: 1 },
   iconButton: { padding: 4 },
@@ -254,7 +271,7 @@ const styles = StyleSheet.create({
   driverButtonText: { fontSize: 14, fontWeight: '700', marginLeft: 4 },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 60 },
   emptyStateText: { fontSize: 18, fontWeight: '600', marginTop: 16 },
-  fab: { position: 'absolute', bottom: 100, right: 24, width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', elevation: 5 }, // FIXED: Lifted
+  fab: { position: 'absolute', bottom: 100, right: 24, width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', elevation: 5 }, 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: '60%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
