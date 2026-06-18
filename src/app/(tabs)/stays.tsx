@@ -17,6 +17,7 @@ import { getProperties } from '../../database/propertyQueries';
 import { addStay, deleteStay, getStays, StayWithProperty } from '../../database/staysQueries';
 import { Property } from '../../types';
 import { parseTicketText } from '../../utils/ticketParser';
+import { shareToWhatsApp } from '../../utils/whatsappFormatter';
 
 export default function StaysScreen() {
   // --- STATE ---
@@ -41,7 +42,6 @@ export default function StaysScreen() {
 
   const loadData = () => {
     setStays(getStays());
-    // We also need properties so the user can select where the guest is staying
     setProperties(getProperties());
   };
 
@@ -63,15 +63,12 @@ export default function StaysScreen() {
         return;
       }
 
-      // 1. Parse the text
       const parsedData = parseTicketText(clipboardContent);
 
-      // 2. Auto-fill the form state
       setFlightInfo(parsedData.flightInfo);
       setArrivalDate(parsedData.arrivalDate);
       setGuestCount(parsedData.guestCount.toString());
 
-      // 3. Switch modal UI to the Form view
       setModalMode('form');
     } catch (error) {
       Alert.alert('Parsing Error', 'An error occurred while reading the clipboard.');
@@ -89,7 +86,6 @@ export default function StaysScreen() {
     }
 
     try {
-      // Adding the stay. (Passing default 0s for kids/pets and 'TBD' for departure for now)
       addStay(
         selectedPropertyId,
         parseInt(guestCount) || 1,
@@ -123,7 +119,7 @@ export default function StaysScreen() {
     <View style={styles.card}>
       <View style={styles.cardHeader}>
         <Text style={styles.propertyName}>{item.propertyName}</Text>
-        <TouchableOpacity onPress={() => handleDelete(item.id)}>
+        <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.iconButton}>
           <Ionicons name="trash-outline" size={20} color="#EF4444" />
         </TouchableOpacity>
       </View>
@@ -134,6 +130,14 @@ export default function StaysScreen() {
       <View style={styles.row}>
         <Ionicons name="people-outline" size={16} color="#64748B" />
         <Text style={styles.infoText}> Guests: {item.guestCount}</Text>
+      </View>
+      
+      {/* NEW: WhatsApp Integration Row */}
+      <View style={styles.cardFooter}>
+        <TouchableOpacity style={styles.whatsappButton} onPress={() => shareToWhatsApp(item)}>
+          <Ionicons name="logo-whatsapp" size={18} color="#FFFFFF" />
+          <Text style={styles.whatsappButtonText}> Share Details via WhatsApp</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -181,7 +185,6 @@ export default function StaysScreen() {
                 <View style={{ width: 28 }} /> 
               </View>
 
-              {/* VIEW 1: IMPORT OPTIONS */}
               {modalMode === 'options' && (
                 <>
                   <Text style={styles.subText}>Choose how you want to import the guest's flight and arrival data.</Text>
@@ -210,7 +213,6 @@ export default function StaysScreen() {
                 </>
               )}
 
-              {/* VIEW 2: CONFIRM FORM */}
               {modalMode === 'form' && (
                 <View>
                   <Text style={styles.label}>Select Property *</Text>
@@ -268,27 +270,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 12,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
   },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-  propertyName: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  propertyName: { fontSize: 18, fontWeight: '700', color: '#0F172A', flex: 1 },
+  iconButton: { padding: 4 },
   row: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   infoText: { fontSize: 14, color: '#475569', marginLeft: 4 },
+  
+  // New Footer Styles
+  cardFooter: { marginTop: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 16 },
+  whatsappButton: { 
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', 
+    backgroundColor: '#25D366', // Official WhatsApp Green
+    paddingVertical: 10, borderRadius: 8 
+  },
+  whatsappButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', marginLeft: 6 },
   
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
   emptyStateText: { fontSize: 18, fontWeight: '600', color: '#475569', marginTop: 16 },
   emptyStateSubtext: { fontSize: 14, color: '#94A3B8', marginTop: 8, textAlign: 'center' },
-  
   fab: {
     position: 'absolute', bottom: 24, right: 24, width: 60, height: 60,
     borderRadius: 30, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 5,
   },
-  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: '60%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   modalTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A' },
   subText: { fontSize: 14, color: '#64748B', marginBottom: 24, lineHeight: 20 },
-  
   actionButton: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC',
     borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 16, padding: 16, marginBottom: 12,
@@ -298,8 +307,6 @@ const styles = StyleSheet.create({
   actionTextContainer: { flex: 1 },
   actionTitle: { fontSize: 16, fontWeight: '600', color: '#0F172A', marginBottom: 4 },
   actionSubtitle: { fontSize: 13, color: '#64748B' },
-
-  // Form Styles
   label: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 8 },
   input: {
     backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8,
