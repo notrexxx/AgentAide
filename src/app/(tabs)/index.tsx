@@ -13,8 +13,9 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { addProperty, deleteProperty, getProperties } from '../database/propertyQueries';
-import { Property } from '../types';
+// FIXED: Double dots to go up two directories from (tabs) -> app -> src
+import { addProperty, deleteProperty, getProperties } from '../../database/propertyQueries';
+import { Property } from '../../types';
 
 export default function PropertiesHubScreen() {
   // --- STATE ---
@@ -27,7 +28,6 @@ export default function PropertiesHubScreen() {
   const [isAirbnb, setIsAirbnb] = useState(false);
 
   // --- DATA FETCHING ---
-  // useFocusEffect ensures the list refreshes every time we navigate back to this screen
   useFocusEffect(
     useCallback(() => {
       loadData();
@@ -48,12 +48,10 @@ export default function PropertiesHubScreen() {
     
     try {
       addProperty(name, isAirbnb, address);
-      // Reset form and close modal
       setName('');
       setAddress('');
       setIsAirbnb(false);
       setModalVisible(false);
-      // Refresh the list immediately
       loadData();
     } catch (error) {
       Alert.alert('Database Error', 'Failed to save property.');
@@ -111,7 +109,6 @@ export default function PropertiesHubScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         
-        {/* Properties List */}
         <FlatList
           data={properties}
           keyExtractor={(item) => item.id.toString()}
@@ -126,12 +123,10 @@ export default function PropertiesHubScreen() {
           }
         />
 
-        {/* Floating Action Button (FAB) */}
         <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
           <Ionicons name="add" size={30} color="#FFFFFF" />
         </TouchableOpacity>
 
-        {/* Add Property Modal */}
         <Modal
           visible={isModalVisible}
           animationType="slide"
@@ -191,23 +186,12 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F1F5F9' },
   container: { flex: 1 },
   listContent: { padding: 16, paddingBottom: 100 },
-  
-  // Empty State
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
   emptyStateText: { fontSize: 18, fontWeight: '600', color: '#475569', marginTop: 16 },
   emptyStateSubtext: { fontSize: 14, color: '#94A3B8', marginTop: 8, textAlign: 'center' },
-  
-  // Card Styles
   card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -219,58 +203,22 @@ const styles = StyleSheet.create({
   badgeActive: { backgroundColor: '#DCFCE7' },
   badgeInactive: { backgroundColor: '#F1F5F9' },
   badgeText: { fontSize: 12, fontWeight: '600', color: '#166534' },
-
-  // FAB Styles
   fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#0F172A',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 5,
+    position: 'absolute', bottom: 24, right: 24, width: 60, height: 60,
+    borderRadius: 30, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 5,
   },
-
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    minHeight: '50%',
-  },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: '50%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   modalTitle: { fontSize: 22, fontWeight: '700', color: '#0F172A' },
   label: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 8 },
   input: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#0F172A',
-    marginBottom: 20,
+    backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8,
+    padding: 12, fontSize: 16, color: '#0F172A', marginBottom: 20,
   },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 },
   switchLabel: { fontSize: 16, fontWeight: '500', color: '#0F172A' },
-  saveButton: {
-    backgroundColor: '#0F172A',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
+  saveButton: { backgroundColor: '#0F172A', padding: 16, borderRadius: 12, alignItems: 'center' },
   saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 });
