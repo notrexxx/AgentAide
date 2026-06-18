@@ -1,21 +1,38 @@
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
+import React from 'react';
+import { StyleSheet, useColorScheme } from 'react-native';
+import { Colors } from '../../theme/colors';
 
 export default function TabLayout() {
+  // Detects if the physical device is in Dark or Light mode
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const theme = Colors[isDark ? 'dark' : 'light'];
+
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#3B82F6',
-        tabBarInactiveTintColor: '#94A3B8',
-        headerShown: false, // FIXED: Purges the default white navigation header
+        headerShown: false,
+        tabBarActiveTintColor: theme.primary,
+        tabBarInactiveTintColor: theme.subText,
+        // SPRINT v0.8.0: Glassmorphism Implementation
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopWidth: 1,
-          borderTopColor: '#E2E8F0',
-          paddingBottom: 8,
-          paddingTop: 8,
-          height: 60,
+          position: 'absolute', // Allows content to scroll underneath
+          borderTopWidth: 0,
+          elevation: 0,
+          height: 85,
+          paddingBottom: 25,
+          backgroundColor: 'transparent', // The background is handled by the BlurView below
         },
+        tabBarBackground: () => (
+          <BlurView 
+            tint={isDark ? 'dark' : 'light'} 
+            intensity={85} 
+            style={StyleSheet.absoluteFill} 
+          />
+        ),
       }}
     >
       <Tabs.Screen

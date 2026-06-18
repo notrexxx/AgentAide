@@ -11,19 +11,25 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
+    useColorScheme,
     View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getPropertyById, getStaysForProperty } from '../../database/propertyQueries';
-// NEW: Imported setMainImage to allow swapping the cover photo
 import { addMedia, deleteMediaRecord, getMediaForProperty, setMainImage } from '../../database/mediaQueries';
+import { getPropertyById, getStaysForProperty } from '../../database/propertyQueries';
+import { Colors } from '../../theme/colors'; // NEW: Theme Engine
 import { Property, PropertyMedia, Stay } from '../../types';
 import { shareLocalPhoto, sharePropertyText } from '../../utils/whatsappFormatter';
 
 const { width } = Dimensions.get('window');
 
 export default function PropertyDetailsScreen() {
+  // NEW: Initialize Theme Engine
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const theme = Colors[isDark ? 'dark' : 'light'];
+
   const { id } = useLocalSearchParams();
   const propertyId = Number(id);
 
@@ -43,7 +49,7 @@ export default function PropertyDetailsScreen() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsMultipleSelection: true, // Select infinite un-cropped images
+        allowsMultipleSelection: true, 
         quality: 0.8,
       });
 
@@ -52,18 +58,13 @@ export default function PropertyDetailsScreen() {
           const cachedUri = asset.uri;
           const fileName = `property_${propertyId}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
           const permanentUri = `${FileSystem.documentDirectory}${fileName}`;
-
           await FileSystem.copyAsync({ from: cachedUri, to: permanentUri });
-          
-          // If the media list is empty, make the first uploaded image the Main Image
           const isFirstEver = mediaList.length === 0;
           addMedia(propertyId, permanentUri, 'photo', isFirstEver);
         }
         loadData();
       }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save the images.');
-    }
+    } catch (error) { Alert.alert('Error', 'Failed to save the images.'); }
   };
 
   const handleSetMain = (mediaId: number) => {
@@ -89,26 +90,27 @@ export default function PropertyDetailsScreen() {
   const isCurrentlyBooked = stays.length > 0;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
+    // The top safe area uses the surface color to blend with the header
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.surface }]} edges={['top', 'left', 'right']}>
+      <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerIconButton}>
-          <Ionicons name="arrow-back" size={24} color="#0F172A" />
+          <Ionicons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{property.name}</Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{property.name}</Text>
         
-        {/* NEW: Dedicated WhatsApp Header Button to share the formatted dossier */}
+        {/* Brand green for WhatsApp stays recognizable in Dark Mode */}
         <TouchableOpacity onPress={() => sharePropertyText(property)} style={styles.headerIconButton}>
           <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} style={{ backgroundColor: theme.background }}>
         <View style={styles.mediaSection}>
           <View style={styles.mediaHeader}>
-            <Text style={styles.sectionHeading}>Asset Media</Text>
-            <TouchableOpacity onPress={handleAddPhotos} style={styles.addMediaButton}>
-              <Ionicons name="images-outline" size={16} color="#3B82F6" />
-              <Text style={styles.addMediaText}> Add Photos</Text>
+            <Text style={[styles.sectionHeading, { color: theme.text }]}>Asset Media</Text>
+            <TouchableOpacity onPress={handleAddPhotos} style={[styles.addMediaButton, { backgroundColor: theme.primary + '20' }]}>
+              <Ionicons name="images-outline" size={16} color={theme.primary} />
+              <Text style={[styles.addMediaText, { color: theme.primary }]}> Add Photos</Text>
             </TouchableOpacity>
           </View>
 
@@ -116,33 +118,34 @@ export default function PropertyDetailsScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.galleryScroll}>
               {mediaList.map((media) => (
                 <View key={media.id} style={{ position: 'relative' }}>
-                  <Image source={{ uri: media.uri }} style={styles.galleryImage} />
+                  <Image source={{ uri: media.uri }} style={[styles.galleryImage, { backgroundColor: theme.border }]} />
                   
-                  {/* NEW: Star Action to set the cover image */}
-                  <TouchableOpacity style={[styles.actionOverlay, { top: 12, left: 12 }]} onPress={() => handleSetMain(media.id)}>
-                    <Ionicons name={media.isMain ? "star" : "star-outline"} size={22} color={media.isMain ? "#F59E0B" : "#0F172A"} />
+                  {/* Action overlays adapt to theme surface color for neat contrast */}
+                  <TouchableOpacity style={[styles.actionOverlay, { top: 12, left: 12, backgroundColor: theme.surface }]} onPress={() => handleSetMain(media.id)}>
+                    <Ionicons name={media.isMain ? "star" : "star-outline"} size={22} color={media.isMain ? "#F59E0B" : theme.text} />
                   </TouchableOpacity>
 
-                  {/* Share Action for a single local photo */}
-                  <TouchableOpacity style={[styles.actionOverlay, { top: 12, right: 24 }]} onPress={() => shareLocalPhoto(media.uri)}>
-                    <Ionicons name="share-social" size={18} color="#0F172A" />
+                  <TouchableOpacity style={[styles.actionOverlay, { top: 12, right: 24, backgroundColor: theme.surface }]} onPress={() => shareLocalPhoto(media.uri)}>
+                    <Ionicons name="share-social" size={18} color={theme.text} />
                   </TouchableOpacity>
 
-                  {/* Delete Action */}
-                  <TouchableOpacity style={[styles.actionOverlay, { bottom: 12, right: 24, backgroundColor: 'rgba(239, 68, 68, 0.9)' }]} onPress={() => handleDeletePhoto(media.id, media.uri)}>
+                  <TouchableOpacity style={[styles.actionOverlay, { bottom: 12, right: 24, backgroundColor: theme.danger }]} onPress={() => handleDeletePhoto(media.id, media.uri)}>
                     <Ionicons name="trash" size={16} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
               ))}
             </ScrollView>
           ) : (
-            <View style={styles.mediaContainer}><Text style={styles.mediaPlaceholderText}>No photos attached.</Text></View>
+            <View style={[styles.mediaContainer, { backgroundColor: theme.background, borderColor: theme.border }]}>
+              <Text style={[styles.mediaPlaceholderText, { color: theme.subText }]}>No photos attached.</Text>
+            </View>
           )}
         </View>
 
         <View style={styles.statusRow}>
-          <View style={[styles.statusBadge, isCurrentlyBooked ? styles.badgeBooked : styles.badgeVacant]}>
-            <Text style={[styles.statusText, isCurrentlyBooked ? styles.textBooked : styles.textVacant]}>
+          {/* Dynamic pill styles that work perfectly in both light and dark mode using border colors */}
+          <View style={[styles.statusBadge, { borderWidth: 1, borderColor: isCurrentlyBooked ? theme.danger : theme.success }]}>
+            <Text style={[styles.statusText, { color: isCurrentlyBooked ? theme.danger : theme.success }]}>
               {isCurrentlyBooked ? '• Currently Booked' : '• Vacant / Available'}
             </Text>
           </View>
@@ -155,53 +158,53 @@ export default function PropertyDetailsScreen() {
         </View>
 
         <View style={styles.metaGrid}>
-          <View style={styles.gridItem}>
+          <View style={[styles.gridItem, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
             <Text style={styles.gridEmoji}>🛏️</Text>
-            <Text style={styles.gridValue}>{property.roomsCount || 0}</Text>
-            <Text style={styles.gridLabel}>Rooms</Text>
+            <Text style={[styles.gridValue, { color: theme.text }]}>{property.roomsCount || 0}</Text>
+            <Text style={[styles.gridLabel, { color: theme.subText }]}>Rooms</Text>
           </View>
-          <View style={styles.gridItem}>
+          <View style={[styles.gridItem, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
             <Text style={styles.gridEmoji}>👥</Text>
-            <Text style={styles.gridValue}>{property.maxGuests || 1}</Text>
-            <Text style={styles.gridLabel}>Max Capacity</Text>
+            <Text style={[styles.gridValue, { color: theme.text }]}>{property.maxGuests || 1}</Text>
+            <Text style={[styles.gridLabel, { color: theme.subText }]}>Max Capacity</Text>
           </View>
-          <View style={styles.gridItem}>
+          <View style={[styles.gridItem, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
             <Text style={styles.gridEmoji}>{property.petsAllowed ? '🐾' : '🚫'}</Text>
-            <Text style={styles.gridValue}>{property.petsAllowed ? 'Yes' : 'No'}</Text>
-            <Text style={styles.gridLabel}>Pets Allowed</Text>
+            <Text style={[styles.gridValue, { color: theme.text }]}>{property.petsAllowed ? 'Yes' : 'No'}</Text>
+            <Text style={[styles.gridLabel, { color: theme.subText }]}>Pets Allowed</Text>
           </View>
         </View>
 
         {property.address && (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionHeading}>Physical Location</Text>
-            <Text style={styles.addressBody}>
-              <Ionicons name="location-outline" size={16} color="#64748B" /> {property.address}
+          <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
+            <Text style={[styles.sectionHeading, { color: theme.text }]}>Physical Location</Text>
+            <Text style={[styles.addressBody, { color: theme.subText }]}>
+              <Ionicons name="location-outline" size={16} color={theme.subText} /> {property.address}
             </Text>
           </View>
         )}
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeading}>Asset Description</Text>
-          <Text style={styles.descriptionBody}>
+        <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[styles.sectionHeading, { color: theme.text }]}>Asset Description</Text>
+          <Text style={[styles.descriptionBody, { color: theme.subText }]}>
             {property.description || 'No formal text summary recorded for this real estate instance.'}
           </Text>
         </View>
 
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeading}>Linked Bookings & Stays Log</Text>
+        <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
+          <Text style={[styles.sectionHeading, { color: theme.text }]}>Linked Bookings & Stays Log</Text>
           {stays.map((stay) => (
-            <View key={stay.id} style={styles.stayLogItem}>
+            <View key={stay.id} style={[styles.stayLogItem, { borderBottomColor: theme.border }]}>
               <View style={styles.stayLogHeader}>
-                <Text style={styles.stayLogDate}>📅 Check In: {stay.arrivalDate}</Text>
-                <Text style={styles.stayLogCount}>👥 x{stay.guestCount}</Text>
+                <Text style={[styles.stayLogDate, { color: theme.text }]}>📅 Check In: {stay.arrivalDate}</Text>
+                <Text style={[styles.stayLogCount, { color: theme.subText }]}>👥 x{stay.guestCount}</Text>
               </View>
               {stay.flightInfo ? (
-                <Text style={styles.stayLogSubText}>✈️ Flight Reference: {stay.flightInfo}</Text>
+                <Text style={[styles.stayLogSubText, { color: theme.subText }]}>✈️ Flight Reference: {stay.flightInfo}</Text>
               ) : null}
             </View>
           ))}
-          {stays.length === 0 && <Text style={styles.emptyStaysText}>Zero stays linked with this property reference asset.</Text>}
+          {stays.length === 0 && <Text style={[styles.emptyStaysText, { color: theme.subText }]}>Zero stays linked with this property reference asset.</Text>}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -209,45 +212,39 @@ export default function PropertyDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F8FAFC' },
-  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  errorText: { color: '#EF4444', fontSize: 16, fontWeight: '600' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 56, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E2E8F0' },
+  safeArea: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 56, borderBottomWidth: 1 },
   headerIconButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', flex: 1, textAlign: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '700', flex: 1, textAlign: 'center' },
   scrollContent: { padding: 16 },
   mediaSection: { marginBottom: 20 },
   mediaHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  addMediaButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16 },
-  addMediaText: { fontSize: 14, fontWeight: '600', color: '#3B82F6' },
+  addMediaButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16 },
+  addMediaText: { fontSize: 14, fontWeight: '600' },
   galleryScroll: { paddingBottom: 8 },
-  galleryImage: { width: width * 0.7, height: 200, borderRadius: 12, marginRight: 12, backgroundColor: '#E2E8F0', resizeMode: 'cover' },
+  galleryImage: { width: width * 0.7, height: 200, borderRadius: 12, marginRight: 12, resizeMode: 'cover' },
   
-  actionOverlay: { position: 'absolute', backgroundColor: 'rgba(255, 255, 255, 0.85)', padding: 8, borderRadius: 20, elevation: 3 },
+  // Theme updates removed hardcoded rgba for overlays to ensure contrast in both modes
+  actionOverlay: { position: 'absolute', padding: 8, borderRadius: 20, elevation: 3 },
   
-  helperText: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontStyle: 'italic' },
-  mediaContainer: { height: 160, backgroundColor: '#F1F5F9', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', borderWidth: 2, borderColor: '#CBD5E1' },
-  mediaPlaceholderText: { color: '#64748B', fontSize: 13, marginTop: 8, fontWeight: '500' },
+  mediaContainer: { height: 160, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', borderWidth: 2 },
+  mediaPlaceholderText: { fontSize: 13, marginTop: 8, fontWeight: '500' },
   statusRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
-  badgeBooked: { backgroundColor: '#FEF2F2' },
-  badgeVacant: { backgroundColor: '#F0FDF4' },
   statusText: { fontSize: 13, fontWeight: '700' },
-  textBooked: { color: '#EF4444' },
-  textVacant: { color: '#10B981' },
   metaGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16, gap: 10 },
-  gridItem: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, alignItems: 'center', elevation: 1 },
+  gridItem: { flex: 1, borderRadius: 12, padding: 12, alignItems: 'center', elevation: 1 },
   gridEmoji: { fontSize: 20, marginBottom: 4 },
-  gridValue: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  gridLabel: { fontSize: 11, color: '#64748B', marginTop: 2, fontWeight: '500' },
-  sectionCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, marginBottom: 12, elevation: 1 },
-  sectionHeading: { fontSize: 15, fontWeight: '700', color: '#334155', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
-  addressBody: { fontSize: 14, color: '#475569', lineHeight: 20 },
-  descriptionBody: { fontSize: 14, color: '#475569', lineHeight: 22 },
-  stayLogItem: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  gridValue: { fontSize: 16, fontWeight: '700' },
+  gridLabel: { fontSize: 11, marginTop: 2, fontWeight: '500' },
+  sectionCard: { borderRadius: 12, padding: 16, marginBottom: 12, elevation: 1 },
+  sectionHeading: { fontSize: 15, fontWeight: '700', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  addressBody: { fontSize: 14, lineHeight: 20 },
+  descriptionBody: { fontSize: 14, lineHeight: 22 },
+  stayLogItem: { paddingVertical: 10, borderBottomWidth: 1 },
   stayLogHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  stayLogDate: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
-  stayLogCount: { fontSize: 13, fontWeight: '500', color: '#64748B' },
-  stayLogSubText: { fontSize: 12, color: '#64748B' },
-  emptyStaysText: { fontSize: 13, color: '#94A3B8', fontStyle: 'italic' }
+  stayLogDate: { fontSize: 14, fontWeight: '600' },
+  stayLogCount: { fontSize: 13, fontWeight: '500' },
+  stayLogSubText: { fontSize: 12 },
+  emptyStaysText: { fontSize: 13, fontStyle: 'italic' }
 });

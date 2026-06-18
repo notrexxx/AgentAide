@@ -14,16 +14,23 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  useColorScheme // NEW: Imported to detect dark mode
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import HeroHeader from '../../components/HeroHeader';
 import { addMedia } from '../../database/mediaQueries';
 import { addProperty, deleteProperty, getProperties } from '../../database/propertyQueries';
+import { Colors } from '../../theme/colors'; // NEW: Imported our color dictionary
 import { Property } from '../../types';
 
 export default function PropertiesHubScreen() {
+  // NEW: Theme detection engine
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const theme = Colors[isDark ? 'dark' : 'light'];
+
   const [properties, setProperties] = useState<Property[]>([]);
   const [isModalVisible, setModalVisible] = useState(false);
   
@@ -47,8 +54,7 @@ export default function PropertiesHubScreen() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsMultipleSelection: true, // NEW: Select infinite images at once
-        // allowsEditing is implicitly disabled to preserve full aspect ratio
+        allowsMultipleSelection: true, 
         quality: 0.8,
       });
 
@@ -80,8 +86,6 @@ export default function PropertiesHubScreen() {
           const permanentUri = `${FileSystem.documentDirectory}${fileName}`;
           
           await FileSystem.copyAsync({ from: uri, to: permanentUri });
-
-          // NEW: The very first image in the array is automatically flagged as the Main Image (true)
           addMedia(newPropertyId, permanentUri, 'photo', i === 0);
         }
       }
@@ -103,16 +107,16 @@ export default function PropertiesHubScreen() {
 
   const renderPropertyCard = ({ item }: { item: Property }) => (
     <TouchableOpacity 
-      style={styles.card} 
+      // NEW: Dynamic theme applied to the card background and borders
+      style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]} 
       onPress={() => router.push(`/properties/${item.id}` as any)}
       activeOpacity={0.8}
     >
-      {/* NEW: Property Card Image Banner */}
       {item.mainImageUri ? (
         <Image source={{ uri: item.mainImageUri }} style={styles.cardBanner} />
       ) : (
-        <View style={styles.cardBannerPlaceholder}>
-          <Ionicons name="image-outline" size={32} color="#CBD5E1" />
+        <View style={[styles.cardBannerPlaceholder, { backgroundColor: theme.background }]}>
+          <Ionicons name="image-outline" size={32} color={theme.subText} />
         </View>
       )}
 
@@ -120,34 +124,34 @@ export default function PropertiesHubScreen() {
         <View style={styles.cardHeader}>
           <View style={styles.titleRow}>
             {item.isAirbnb ? (
-              <FontAwesome5 name="airbnb" size={20} color="#FF5A5F" />
+              <FontAwesome5 name="airbnb" size={20} color={theme.danger} />
             ) : (
-              <Ionicons name="home" size={20} color="#3B82F6" />
+              <Ionicons name="home" size={20} color={theme.primary} />
             )}
-            <Text style={styles.cardTitle}>{item.name}</Text>
+            <Text style={[styles.cardTitle, { color: theme.text }]}>{item.name}</Text>
           </View>
           <TouchableOpacity onPress={() => handleDelete(item.id, item.name)} style={styles.deleteButton}>
-            <Ionicons name="trash-outline" size={20} color="#EF4444" />
+            <Ionicons name="trash-outline" size={20} color={theme.danger} />
           </TouchableOpacity>
         </View>
         {item.address ? (
-          <Text style={styles.cardAddress} numberOfLines={1}>
-            <Ionicons name="location-outline" size={14} color="#64748B" /> {item.address}
+          <Text style={[styles.cardAddress, { color: theme.subText }]} numberOfLines={1}>
+            <Ionicons name="location-outline" size={14} color={theme.subText} /> {item.address}
           </Text>
         ) : null}
         
-        <View style={styles.specsRow}>
-          <Text style={styles.specText}>🛏️ {item.roomsCount || 0} Rooms</Text>
-          <Text style={styles.specText}>👥 Max {item.maxGuests || 1}</Text>
-          <Text style={styles.specText}>{item.petsAllowed ? '🐾 Pets Ok' : '🚫 No Pets'}</Text>
+        <View style={[styles.specsRow, { backgroundColor: theme.background }]}>
+          <Text style={[styles.specText, { color: theme.text }]}>🛏️ {item.roomsCount || 0} Rooms</Text>
+          <Text style={[styles.specText, { color: theme.text }]}>👥 Max {item.maxGuests || 1}</Text>
+          <Text style={[styles.specText, { color: theme.text }]}>{item.petsAllowed ? '🐾 Pets Ok' : '🚫 No Pets'}</Text>
         </View>
       </View>
     </TouchableOpacity>
   );
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View style={styles.container}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.hero }]} edges={['top', 'left', 'right']}>
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
         <FlatList
           data={properties}
           keyExtractor={(item) => item.id.toString()}
@@ -158,32 +162,32 @@ export default function PropertiesHubScreen() {
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Ionicons name="folder-open-outline" size={48} color="#CBD5E1" />
-              <Text style={styles.emptyStateText}>No properties found.</Text>
+              <Ionicons name="folder-open-outline" size={48} color={theme.subText} />
+              <Text style={[styles.emptyStateText, { color: theme.subText }]}>No properties found.</Text>
             </View>
           }
         />
-        <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
+        <TouchableOpacity style={[styles.fab, { backgroundColor: theme.primary }]} onPress={() => setModalVisible(true)}>
           <Ionicons name="add" size={30} color="#FFFFFF" />
         </TouchableOpacity>
 
         <Modal visible={isModalVisible} animationType="slide" transparent={true}>
           <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { backgroundColor: theme.surface }]}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Create a new property</Text>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Create a new property</Text>
                 <TouchableOpacity onPress={() => setModalVisible(false)}>
-                  <Ionicons name="close" size={28} color="#64748B" />
+                  <Ionicons name="close" size={28} color={theme.subText} />
                 </TouchableOpacity>
               </View>
 
               <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
                 <View style={styles.mediaSection}>
-                  <Text style={styles.label}>Property Photos</Text>
+                  <Text style={[styles.label, { color: theme.text }]}>Property Photos</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tempGalleryScroll}>
-                    <TouchableOpacity style={styles.addPhotoSquare} onPress={handleAddTempPhoto}>
-                      <Ionicons name="camera" size={24} color="#94A3B8" />
-                      <Text style={styles.addPhotoText}>Add</Text>
+                    <TouchableOpacity style={[styles.addPhotoSquare, { backgroundColor: theme.background, borderColor: theme.border }]} onPress={handleAddTempPhoto}>
+                      <Ionicons name="camera" size={24} color={theme.subText} />
+                      <Text style={[styles.addPhotoText, { color: theme.subText }]}>Add</Text>
                     </TouchableOpacity>
                     {tempPhotos.map((uri, index) => (
                       <View key={index} style={styles.tempImageContainer}>
@@ -196,15 +200,16 @@ export default function PropertiesHubScreen() {
                   </ScrollView>
                 </View>
 
-                <Text style={styles.label}>Property Name *</Text>
-                <TextInput style={styles.input} placeholder="e.g., Oceanfront Villa" value={name} onChangeText={setName} />
+                <Text style={[styles.label, { color: theme.text }]}>Property Name *</Text>
+                <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} placeholder="e.g., Oceanfront Villa" value={name} onChangeText={setName} />
 
-                <Text style={styles.label}>Address</Text>
-                <TextInput style={styles.input} placeholder="Full address" value={address} onChangeText={setAddress} />
+                <Text style={[styles.label, { color: theme.text }]}>Address</Text>
+                <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} placeholder="Full address" value={address} onChangeText={setAddress} />
 
-                <Text style={styles.label}>Description</Text>
+                <Text style={[styles.label, { color: theme.text }]}>Description</Text>
                 <TextInput 
-                  style={[styles.input, styles.textArea]} 
+                  style={[styles.input, styles.textArea, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} 
+                  placeholderTextColor={theme.subText}
                   placeholder="Key property details..." 
                   multiline numberOfLines={3} 
                   value={description} 
@@ -213,26 +218,26 @@ export default function PropertiesHubScreen() {
 
                 <View style={styles.rowInputs}>
                   <View style={{ flex: 1, marginRight: 12 }}>
-                    <Text style={styles.label}>Rooms Count</Text>
-                    <TextInput style={styles.input} keyboardType="numeric" placeholder="0" value={roomsCount} onChangeText={setRoomsCount} />
+                    <Text style={[styles.label, { color: theme.text }]}>Rooms Count</Text>
+                    <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} keyboardType="numeric" placeholder="0" value={roomsCount} onChangeText={setRoomsCount} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.label}>Max Capacity</Text>
-                    <TextInput style={styles.input} keyboardType="numeric" placeholder="1" value={maxGuests} onChangeText={setMaxGuests} />
+                    <Text style={[styles.label, { color: theme.text }]}>Max Capacity</Text>
+                    <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} keyboardType="numeric" placeholder="1" value={maxGuests} onChangeText={setMaxGuests} />
                   </View>
                 </View>
 
                 <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>Allow Pets?</Text>
-                  <Switch value={petsAllowed} onValueChange={setPetsAllowed} trackColor={{ false: '#CBD5E1', true: '#10B981' }} />
+                  <Text style={[styles.switchLabel, { color: theme.text }]}>Allow Pets?</Text>
+                  <Switch value={petsAllowed} onValueChange={setPetsAllowed} trackColor={{ false: theme.border, true: theme.success }} />
                 </View>
 
                 <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>List as Airbnb Instance?</Text>
-                  <Switch value={isAirbnb} onValueChange={setIsAirbnb} trackColor={{ false: '#CBD5E1', true: '#FF5A5F' }} />
+                  <Text style={[styles.switchLabel, { color: theme.text }]}>List as Airbnb Instance?</Text>
+                  <Switch value={isAirbnb} onValueChange={setIsAirbnb} trackColor={{ false: theme.border, true: theme.danger }} />
                 </View>
 
-                <TouchableOpacity style={styles.saveButton} onPress={handleSaveProperty}>
+                <TouchableOpacity style={[styles.saveButton, { backgroundColor: theme.primary }]} onPress={handleSaveProperty}>
                   <Text style={styles.saveButtonText}>Create Property</Text>
                 </TouchableOpacity>
               </ScrollView>
@@ -245,44 +250,45 @@ export default function PropertiesHubScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#0F172A' },
-  container: { flex: 1, backgroundColor: '#F1F5F9' },
-  listContent: { paddingBottom: 100 },
+  safeArea: { flex: 1 },
+  container: { flex: 1 },
+  listContent: { paddingBottom: 120 }, // FIXED: Ensures the last card isn't hidden behind the glass tab bar
   
-  // NEW: Updated Card Layout to accommodate edge-to-edge banners
-  card: { backgroundColor: '#FFFFFF', borderRadius: 16, marginBottom: 16, marginHorizontal: 16, elevation: 3, overflow: 'hidden' },
-  cardBanner: { width: '100%', height: 140, backgroundColor: '#E2E8F0', resizeMode: 'cover' },
-  cardBannerPlaceholder: { width: '100%', height: 140, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  card: { borderRadius: 16, marginBottom: 16, marginHorizontal: 16, elevation: 3, overflow: 'hidden' },
+  cardBanner: { width: '100%', height: 140, resizeMode: 'cover' },
+  cardBannerPlaceholder: { width: '100%', height: 140, alignItems: 'center', justifyContent: 'center' },
   cardBody: { padding: 16 },
   
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cardTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
+  cardTitle: { fontSize: 18, fontWeight: '700' },
   deleteButton: { padding: 4 },
-  cardAddress: { fontSize: 14, color: '#64748B', marginBottom: 12 },
-  specsRow: { flexDirection: 'row', gap: 12, backgroundColor: '#F8FAFC', padding: 8, borderRadius: 8 },
-  specText: { fontSize: 13, fontWeight: '600', color: '#475569' },
+  cardAddress: { fontSize: 14, marginBottom: 12 },
+  specsRow: { flexDirection: 'row', gap: 12, padding: 8, borderRadius: 8 },
+  specText: { fontSize: 13, fontWeight: '600' },
+  
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 60 },
-  emptyStateText: { fontSize: 16, color: '#64748B' },
-  fab: { position: 'absolute', bottom: 24, right: 24, width: 60, height: 60, borderRadius: 30, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center', elevation: 5 },
+  emptyStateText: { fontSize: 16, marginTop: 16 },
+  fab: { position: 'absolute', bottom: 100, right: 24, width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', elevation: 5 }, // FIXED: Lifted above the glass tab bar
+  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
+  modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A' },
+  modalTitle: { fontSize: 20, fontWeight: '700' },
   formScroll: { marginBottom: 20 },
   mediaSection: { marginBottom: 16 },
   tempGalleryScroll: { paddingVertical: 4 },
-  addPhotoSquare: { width: 70, height: 70, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  addPhotoText: { fontSize: 10, color: '#94A3B8', marginTop: 4, fontWeight: '600' },
+  addPhotoSquare: { width: 70, height: 70, borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  addPhotoText: { fontSize: 10, marginTop: 4, fontWeight: '600' },
   tempImageContainer: { marginRight: 10, position: 'relative' },
   tempImage: { width: 70, height: 70, borderRadius: 8, backgroundColor: '#E2E8F0', resizeMode: 'cover' },
   removeTempPhotoBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#EF4444', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', elevation: 2 },
-  label: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 6 },
-  input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 12, fontSize: 16, color: '#0F172A', marginBottom: 14 },
+  label: { fontSize: 14, fontWeight: '600', marginBottom: 6 },
+  input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 14 },
   textArea: { minHeight: 70, textAlignVertical: 'top' },
   rowInputs: { flexDirection: 'row' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  switchLabel: { fontSize: 15, fontWeight: '500', color: '#334155' },
-  saveButton: { backgroundColor: '#0F172A', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  switchLabel: { fontSize: 15, fontWeight: '500' },
+  saveButton: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
   saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' }
 });
