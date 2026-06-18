@@ -15,8 +15,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { addMedia, deleteMediaRecord, getMediaForProperty } from '../../database/mediaQueries';
 import { getPropertyById, getStaysForProperty } from '../../database/propertyQueries';
+// NEW: Imported setMainImage to allow swapping the cover photo
+import { addMedia, deleteMediaRecord, getMediaForProperty, setMainImage } from '../../database/mediaQueries';
 import { Property, PropertyMedia, Stay } from '../../types';
 import { shareLocalPhoto, sharePropertyText } from '../../utils/whatsappFormatter';
 
@@ -30,9 +31,7 @@ export default function PropertyDetailsScreen() {
   const [stays, setStays] = useState<Stay[]>([]);
   const [mediaList, setMediaList] = useState<PropertyMedia[]>([]);
 
-  useEffect(() => {
-    if (propertyId) loadData();
-  }, [propertyId]);
+  useEffect(() => { if (propertyId) loadData(); }, [propertyId]);
 
   const loadData = () => {
     setProperty(getPropertyById(propertyId));
@@ -40,57 +39,53 @@ export default function PropertyDetailsScreen() {
     setMediaList(getMediaForProperty(propertyId));
   };
 
-  const handleAddPhoto = async () => {
+  const handleAddPhotos = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsMultipleSelection: true, // Select infinite un-cropped images
         quality: 0.8,
       });
 
-      if (result.canceled || !result.assets[0]) return;
+      if (!result.canceled && result.assets) {
+        for (const asset of result.assets) {
+          const cachedUri = asset.uri;
+          const fileName = `property_${propertyId}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+          const permanentUri = `${FileSystem.documentDirectory}${fileName}`;
 
-      const cachedUri = result.assets[0].uri;
-      const fileName = `property_${propertyId}_${Date.now()}.jpg`;
-      const permanentUri = `${FileSystem.documentDirectory}${fileName}`;
-
-      await FileSystem.copyAsync({
-        from: cachedUri,
-        to: permanentUri,
-      });
-
-      addMedia(propertyId, permanentUri, 'photo');
-      loadData();
+          await FileSystem.copyAsync({ from: cachedUri, to: permanentUri });
+          
+          // If the media list is empty, make the first uploaded image the Main Image
+          const isFirstEver = mediaList.length === 0;
+          addMedia(propertyId, permanentUri, 'photo', isFirstEver);
+        }
+        loadData();
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to save the image to local storage.');
+      Alert.alert('Error', 'Failed to save the images.');
     }
   };
 
+  const handleSetMain = (mediaId: number) => {
+    Alert.alert('Set Main Image', 'Use this photo as the cover for this property?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Set as Cover', onPress: () => { setMainImage(propertyId, mediaId); loadData(); }}
+    ]);
+  };
+
   const handleDeletePhoto = (mediaId: number, uri: string) => {
-    Alert.alert('Delete Photo', 'Remove this image from the property?', [
+    Alert.alert('Delete Photo', 'Remove this image?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
-          try {
-            await FileSystem.deleteAsync(uri, { idempotent: true });
-            deleteMediaRecord(mediaId);
-            loadData();
-          } catch (error) {
-            Alert.alert('Error', 'Failed to delete the image.');
-          }
+          await FileSystem.deleteAsync(uri, { idempotent: true });
+          deleteMediaRecord(mediaId);
+          loadData();
         }
       }
     ]);
   };
 
-  if (!property) {
-    return (
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.centerContainer}><Text style={styles.errorText}>Property record not found.</Text></View>
-      </SafeAreaView>
-    );
-  }
-
+  if (!property) return null;
   const isCurrentlyBooked = stays.length > 0;
 
   return (
@@ -101,54 +96,48 @@ export default function PropertyDetailsScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{property.name}</Text>
         
-        {/* SPRINT 3: Global Property Text Share Button */}
+        {/* NEW: Dedicated WhatsApp Header Button to share the formatted dossier */}
         <TouchableOpacity onPress={() => sharePropertyText(property)} style={styles.headerIconButton}>
-          <Ionicons name="share-outline" size={24} color="#3B82F6" />
+          <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
         <View style={styles.mediaSection}>
           <View style={styles.mediaHeader}>
             <Text style={styles.sectionHeading}>Asset Media</Text>
-            <TouchableOpacity onPress={handleAddPhoto} style={styles.addMediaButton}>
-              <Ionicons name="camera-outline" size={16} color="#3B82F6" />
-              <Text style={styles.addMediaText}> Add Photo</Text>
+            <TouchableOpacity onPress={handleAddPhotos} style={styles.addMediaButton}>
+              <Ionicons name="images-outline" size={16} color="#3B82F6" />
+              <Text style={styles.addMediaText}> Add Photos</Text>
             </TouchableOpacity>
           </View>
 
           {mediaList.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.galleryScroll}>
               {mediaList.map((media) => (
-                <TouchableOpacity 
-                  key={media.id} 
-                  onLongPress={() => handleDeletePhoto(media.id, media.uri)}
-                  activeOpacity={0.9}
-                >
+                <View key={media.id} style={{ position: 'relative' }}>
                   <Image source={{ uri: media.uri }} style={styles.galleryImage} />
                   
-                  {/* SPRINT 3: Native Photo Share Trigger */}
-                  <TouchableOpacity 
-                    style={styles.shareOverlay} 
-                    onPress={() => shareLocalPhoto(media.uri)}
-                  >
+                  {/* NEW: Star Action to set the cover image */}
+                  <TouchableOpacity style={[styles.actionOverlay, { top: 12, left: 12 }]} onPress={() => handleSetMain(media.id)}>
+                    <Ionicons name={media.isMain ? "star" : "star-outline"} size={22} color={media.isMain ? "#F59E0B" : "#0F172A"} />
+                  </TouchableOpacity>
+
+                  {/* Share Action for a single local photo */}
+                  <TouchableOpacity style={[styles.actionOverlay, { top: 12, right: 24 }]} onPress={() => shareLocalPhoto(media.uri)}>
                     <Ionicons name="share-social" size={18} color="#0F172A" />
                   </TouchableOpacity>
 
-                  <View style={styles.deleteOverlay}>
-                    <Ionicons name="trash" size={14} color="#FFFFFF" />
-                  </View>
-                </TouchableOpacity>
+                  {/* Delete Action */}
+                  <TouchableOpacity style={[styles.actionOverlay, { bottom: 12, right: 24, backgroundColor: 'rgba(239, 68, 68, 0.9)' }]} onPress={() => handleDeletePhoto(media.id, media.uri)}>
+                    <Ionicons name="trash" size={16} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
               ))}
             </ScrollView>
           ) : (
-            <View style={styles.mediaContainer}>
-              <Ionicons name="images-outline" size={40} color="#CBD5E1" />
-              <Text style={styles.mediaPlaceholderText}>No photos attached to this property.</Text>
-            </View>
+            <View style={styles.mediaContainer}><Text style={styles.mediaPlaceholderText}>No photos attached.</Text></View>
           )}
-          {mediaList.length > 0 && <Text style={styles.helperText}>Tap the share icon to send photo. Long-press to delete.</Text>}
         </View>
 
         <View style={styles.statusRow}>
@@ -214,7 +203,6 @@ export default function PropertyDetailsScreen() {
           ))}
           {stays.length === 0 && <Text style={styles.emptyStaysText}>Zero stays linked with this property reference asset.</Text>}
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -233,11 +221,9 @@ const styles = StyleSheet.create({
   addMediaButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16 },
   addMediaText: { fontSize: 14, fontWeight: '600', color: '#3B82F6' },
   galleryScroll: { paddingBottom: 8 },
-  galleryImage: { width: width * 0.7, height: 200, borderRadius: 12, marginRight: 12, backgroundColor: '#E2E8F0' },
+  galleryImage: { width: width * 0.7, height: 200, borderRadius: 12, marginRight: 12, backgroundColor: '#E2E8F0', resizeMode: 'cover' },
   
-  // SPRINT 3: Media Share Overlay
-  shareOverlay: { position: 'absolute', top: 12, right: 24, backgroundColor: 'rgba(255, 255, 255, 0.9)', padding: 8, borderRadius: 20, elevation: 3 },
-  deleteOverlay: { position: 'absolute', bottom: 12, right: 24, backgroundColor: 'rgba(239, 68, 68, 0.9)', padding: 6, borderRadius: 12 },
+  actionOverlay: { position: 'absolute', backgroundColor: 'rgba(255, 255, 255, 0.85)', padding: 8, borderRadius: 20, elevation: 3 },
   
   helperText: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontStyle: 'italic' },
   mediaContainer: { height: 160, backgroundColor: '#F1F5F9', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', borderWidth: 2, borderColor: '#CBD5E1' },

@@ -1,33 +1,33 @@
 import { Stay } from '../types';
 import { db } from './init';
 
-// We extend the base Stay type to include the joined property name for the UI
+// FIXED: Restored the relational interface that was accidentally dropped
 export interface StayWithProperty extends Stay {
   propertyName: string;
+  mainImageUri?: string;
 }
 
 /**
- * Retrieves all active stays, joining the property name from the properties table.
- * Orders them by arrival date so the most immediate check-ins appear first.
+ * Compiles a list of active guest stays, pulling the parent property name 
+ * along with its current primary star/cover photo for display on the dashboard card.
  */
 export function getStays(): StayWithProperty[] {
   try {
-    return db.getAllSync<StayWithProperty>(`
-      SELECT 
-        stays.*, 
-        properties.name AS propertyName 
-      FROM stays 
-      LEFT JOIN properties ON stays.propertyId = properties.id 
-      ORDER BY date(stays.arrivalDate) ASC;
-    `);
+    return db.getAllSync<StayWithProperty>(
+      `SELECT s.*, p.name as propertyName, m.uri as mainImageUri 
+       FROM stays s 
+       JOIN properties p ON s.propertyId = p.id 
+       LEFT JOIN property_media m ON p.id = m.propertyId AND m.isMain = 1 
+       ORDER BY s.id DESC;`
+    );
   } catch (error) {
-    console.error('Error fetching stays:', error);
+    console.error('Error fetching stays dashboard data:', error);
     return [];
   }
 }
 
 /**
- * Inserts a new stay/rental record into the database.
+ * Records a parsed incoming itinerary stay instance.
  */
 export function addStay(
   propertyId: number,
@@ -38,13 +38,11 @@ export function addStay(
   arrivalDate: string,
   departureDate: string,
   flightInfo: string
-): void {
+): number {
   try {
-    db.runSync(
-      `INSERT INTO stays (
-        propertyId, guestCount, kidsCount, petsCount, 
-        specialRequests, arrivalDate, departureDate, flightInfo
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+    const result = db.runSync(
+      `INSERT INTO stays (propertyId, guestCount, kidsCount, petsCount, specialRequests, arrivalDate, departureDate, flightInfo) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         propertyId, 
         guestCount, 
@@ -56,20 +54,21 @@ export function addStay(
         flightInfo
       ]
     );
+    return result.lastInsertRowId;
   } catch (error) {
-    console.error('Error adding stay:', error);
+    console.error('Error creating stay row entry:', error);
     throw error;
   }
 }
 
 /**
- * Deletes a stay by its ID (e.g., if a booking is cancelled).
+ * Deletes a guest itinerary entry by its specific database identifier.
  */
 export function deleteStay(id: number): void {
   try {
     db.runSync('DELETE FROM stays WHERE id = ?;', [id]);
   } catch (error) {
-    console.error('Error deleting stay:', error);
+    console.error(`Error deleting stay record ID ${id}:`, error);
     throw error;
   }
 }

@@ -5,8 +5,9 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#3B82F6', // Brand Blue
-        tabBarInactiveTintColor: '#94A3B8', // Slate Gray
+        tabBarActiveTintColor: '#3B82F6',
+        tabBarInactiveTintColor: '#94A3B8',
+        headerShown: false, // FIXED: Purges the default white navigation header
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopWidth: 1,
@@ -15,16 +16,8 @@ export default function TabLayout() {
           paddingTop: 8,
           height: 60,
         },
-        headerStyle: {
-          backgroundColor: '#0F172A',
-        },
-        headerTintColor: '#FFFFFF',
-        headerTitleStyle: {
-          fontWeight: '700',
-        },
       }}
     >
-      {/* Properties Tab */}
       <Tabs.Screen
         name="index"
         options={{
@@ -32,7 +25,6 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <Ionicons name="home" size={24} color={color} />,
         }}
       />
-      {/* Stays Tab */}
       <Tabs.Screen
         name="stays"
         options={{

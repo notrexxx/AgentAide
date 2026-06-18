@@ -27,7 +27,6 @@ export default function PropertiesHubScreen() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [isModalVisible, setModalVisible] = useState(false);
   
-  // Enriched Form State
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [isAirbnb, setIsAirbnb] = useState(false);
@@ -38,11 +37,7 @@ export default function PropertiesHubScreen() {
   
   const [tempPhotos, setTempPhotos] = useState<string[]>([]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => { loadData(); }, []));
 
   const loadData = () => {
     setProperties(getProperties());
@@ -52,13 +47,14 @@ export default function PropertiesHubScreen() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsMultipleSelection: true, // NEW: Select infinite images at once
+        // allowsEditing is implicitly disabled to preserve full aspect ratio
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets[0]) {
-        setTempPhotos(prev => [...prev, result.assets[0].uri]);
+      if (!result.canceled && result.assets) {
+        const uris = result.assets.map(asset => asset.uri);
+        setTempPhotos(prev => [...prev, ...uris]);
       }
     } catch (error) {
       Alert.alert('Error', 'Could not open image picker.');
@@ -74,110 +70,91 @@ export default function PropertiesHubScreen() {
       Alert.alert('Validation Error', 'Property Name is required.');
       return;
     }
-    
     try {
-      const newPropertyId = addProperty(
-        name, 
-        isAirbnb, 
-        address, 
-        description, 
-        parseInt(roomsCount) || 0, 
-        parseInt(maxGuests) || 1, 
-        petsAllowed
-      );
+      const newPropertyId = addProperty(name, isAirbnb, address, description, parseInt(roomsCount) || 0, parseInt(maxGuests) || 1, petsAllowed);
 
       if (tempPhotos.length > 0) {
-        for (const uri of tempPhotos) {
+        for (let i = 0; i < tempPhotos.length; i++) {
+          const uri = tempPhotos[i];
           const fileName = `property_${newPropertyId}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
           const permanentUri = `${FileSystem.documentDirectory}${fileName}`;
           
-          await FileSystem.copyAsync({
-            from: uri,
-            to: permanentUri,
-          });
+          await FileSystem.copyAsync({ from: uri, to: permanentUri });
 
-          addMedia(newPropertyId, permanentUri, 'photo');
+          // NEW: The very first image in the array is automatically flagged as the Main Image (true)
+          addMedia(newPropertyId, permanentUri, 'photo', i === 0);
         }
       }
       
-      setName('');
-      setAddress('');
-      setIsAirbnb(false);
-      setDescription('');
-      setRoomsCount('');
-      setMaxGuests('');
-      setPetsAllowed(false);
-      setTempPhotos([]);
-      setModalVisible(false);
-      loadData();
+      setName(''); setAddress(''); setIsAirbnb(false); setDescription('');
+      setRoomsCount(''); setMaxGuests(''); setPetsAllowed(false); setTempPhotos([]);
+      setModalVisible(false); loadData();
     } catch (error) {
       Alert.alert('Database Error', 'Failed to save property.');
     }
   };
 
   const handleDelete = (id: number, propertyName: string) => {
-    Alert.alert(
-      'Delete Property',
-      `Are you sure you want to delete "${propertyName}"? All associated stays will be lost forever.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => { deleteProperty(id); loadData(); }}
-      ]
-    );
+    Alert.alert('Delete Property', `Delete "${propertyName}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => { deleteProperty(id); loadData(); }}
+    ]);
   };
 
   const renderPropertyCard = ({ item }: { item: Property }) => (
     <TouchableOpacity 
       style={styles.card} 
       onPress={() => router.push(`/properties/${item.id}` as any)}
-      activeOpacity={0.7}
+      activeOpacity={0.8}
     >
-      <View style={styles.cardHeader}>
-        <View style={styles.titleRow}>
-          {item.isAirbnb ? (
-            <FontAwesome5 name="airbnb" size={20} color="#FF5A5F" />
-          ) : (
-            <Ionicons name="home" size={20} color="#3B82F6" />
-          )}
-          <Text style={styles.cardTitle}>{item.name}</Text>
+      {/* NEW: Property Card Image Banner */}
+      {item.mainImageUri ? (
+        <Image source={{ uri: item.mainImageUri }} style={styles.cardBanner} />
+      ) : (
+        <View style={styles.cardBannerPlaceholder}>
+          <Ionicons name="image-outline" size={32} color="#CBD5E1" />
         </View>
-        <TouchableOpacity onPress={() => handleDelete(item.id, item.name)} style={styles.deleteButton}>
-          <Ionicons name="trash-outline" size={20} color="#EF4444" />
-        </TouchableOpacity>
-      </View>
-      {item.address ? (
-        <Text style={styles.cardAddress} numberOfLines={1}>
-          <Ionicons name="location-outline" size={14} color="#64748B" /> {item.address}
-        </Text>
-      ) : null}
-      
-      <View style={styles.specsRow}>
-        <Text style={styles.specText}>🛏️ {item.roomsCount || 0} Rooms</Text>
-        <Text style={styles.specText}>👥 Max {item.maxGuests || 1}</Text>
-        <Text style={styles.specText}>{item.petsAllowed ? '🐾 Pets Ok' : '🚫 No Pets'}</Text>
+      )}
+
+      <View style={styles.cardBody}>
+        <View style={styles.cardHeader}>
+          <View style={styles.titleRow}>
+            {item.isAirbnb ? (
+              <FontAwesome5 name="airbnb" size={20} color="#FF5A5F" />
+            ) : (
+              <Ionicons name="home" size={20} color="#3B82F6" />
+            )}
+            <Text style={styles.cardTitle}>{item.name}</Text>
+          </View>
+          <TouchableOpacity onPress={() => handleDelete(item.id, item.name)} style={styles.deleteButton}>
+            <Ionicons name="trash-outline" size={20} color="#EF4444" />
+          </TouchableOpacity>
+        </View>
+        {item.address ? (
+          <Text style={styles.cardAddress} numberOfLines={1}>
+            <Ionicons name="location-outline" size={14} color="#64748B" /> {item.address}
+          </Text>
+        ) : null}
+        
+        <View style={styles.specsRow}>
+          <Text style={styles.specText}>🛏️ {item.roomsCount || 0} Rooms</Text>
+          <Text style={styles.specText}>👥 Max {item.maxGuests || 1}</Text>
+          <Text style={styles.specText}>{item.petsAllowed ? '🐾 Pets Ok' : '🚫 No Pets'}</Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
 
   return (
-    // FIXED: Changing background color to match the Hero header integrates the top notch cleanly
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.container}>
-        
         <FlatList
           data={properties}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderPropertyCard}
           contentContainerStyle={styles.listContent}
-          // NEW: Reusable Hero component injected as a structural list header
           ListHeaderComponent={
-            <HeroHeader 
-              title="Properties Hub"
-              subtitle="Manage your physical real estate portfolio and localized rental instances."
-              iconName="business-outline"
-              statLabel="Total Managed Assets"
-              statValue={properties.length}
-            />
+            <HeroHeader title="Properties Hub" subtitle="Manage your physical real estate portfolio and localized rental instances." iconName="business-outline" statLabel="Total Managed Assets" statValue={properties.length} />
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
@@ -186,7 +163,6 @@ export default function PropertiesHubScreen() {
             </View>
           }
         />
-
         <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
           <Ionicons name="add" size={30} color="#FFFFFF" />
         </TouchableOpacity>
@@ -263,17 +239,22 @@ export default function PropertiesHubScreen() {
             </View>
           </View>
         </Modal>
-
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#0F172A' }, // Changed to Midnight Slate
-  container: { flex: 1, backgroundColor: '#F1F5F9' }, // Keeps content area light gray
+  safeArea: { flex: 1, backgroundColor: '#0F172A' },
+  container: { flex: 1, backgroundColor: '#F1F5F9' },
   listContent: { paddingBottom: 100 },
-  card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 12, marginHorizontal: 16, elevation: 2 },
+  
+  // NEW: Updated Card Layout to accommodate edge-to-edge banners
+  card: { backgroundColor: '#FFFFFF', borderRadius: 16, marginBottom: 16, marginHorizontal: 16, elevation: 3, overflow: 'hidden' },
+  cardBanner: { width: '100%', height: 140, backgroundColor: '#E2E8F0', resizeMode: 'cover' },
+  cardBannerPlaceholder: { width: '100%', height: 140, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
+  cardBody: { padding: 16 },
+  
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
@@ -294,7 +275,7 @@ const styles = StyleSheet.create({
   addPhotoSquare: { width: 70, height: 70, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   addPhotoText: { fontSize: 10, color: '#94A3B8', marginTop: 4, fontWeight: '600' },
   tempImageContainer: { marginRight: 10, position: 'relative' },
-  tempImage: { width: 70, height: 70, borderRadius: 8, backgroundColor: '#E2E8F0' },
+  tempImage: { width: 70, height: 70, borderRadius: 8, backgroundColor: '#E2E8F0', resizeMode: 'cover' },
   removeTempPhotoBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#EF4444', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', elevation: 2 },
   label: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 6 },
   input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 12, fontSize: 16, color: '#0F172A', marginBottom: 14 },

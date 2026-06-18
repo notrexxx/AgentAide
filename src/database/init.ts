@@ -49,13 +49,11 @@ export function initializeDatabase() {
       );
     `);
 
-    // --- v0.6.0 SCHEMA MIGRATIONS ---
-    // We attempt to add the new columns. If the app is run on a fresh device, 
-    // the above CREATE TABLE makes them, and these will safely fail.
     applyMigration(`ALTER TABLE properties ADD COLUMN description TEXT;`);
     applyMigration(`ALTER TABLE properties ADD COLUMN roomsCount INTEGER DEFAULT 0;`);
     applyMigration(`ALTER TABLE properties ADD COLUMN maxGuests INTEGER DEFAULT 1;`);
     applyMigration(`ALTER TABLE properties ADD COLUMN petsAllowed INTEGER DEFAULT 0;`);
+    applyMigration(`ALTER TABLE property_media ADD COLUMN isMain INTEGER DEFAULT 0;`);
 
     console.log('Database and schema initialized/migrated successfully.');
   } catch (error) {
