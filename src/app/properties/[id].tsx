@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+    ActivityIndicator,
     Alert,
     Dimensions,
     Image,
@@ -18,14 +19,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { addMedia, deleteMediaRecord, getMediaForProperty, setMainImage } from '../../database/mediaQueries';
 import { getPropertyById, getStaysForProperty } from '../../database/propertyQueries';
-import { Colors } from '../../theme/colors'; // NEW: Theme Engine
+import { Colors } from '../../theme/colors';
 import { Property, PropertyMedia, Stay } from '../../types';
 import { shareLocalPhoto, sharePropertyText } from '../../utils/whatsappFormatter';
+
+// NEW: Import our Supabase Cloud Bridge
+import { uploadToCloud } from '../../utils/cloudSync';
 
 const { width } = Dimensions.get('window');
 
 export default function PropertyDetailsScreen() {
-  // NEW: Initialize Theme Engine
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = Colors[isDark ? 'dark' : 'light'];
@@ -36,6 +39,9 @@ export default function PropertyDetailsScreen() {
   const [property, setProperty] = useState<Property | null>(null);
   const [stays, setStays] = useState<Stay[]>([]);
   const [mediaList, setMediaList] = useState<PropertyMedia[]>([]);
+  
+  // NEW: State to manage the visual loading spinner during upload
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => { if (propertyId) loadData(); }, [propertyId]);
 
@@ -86,11 +92,47 @@ export default function PropertyDetailsScreen() {
     ]);
   };
 
+  // NEW: The Cloud Dossier Generation Engine
+  const handleCloudShare = async () => {
+    // Attempt to grab the starred main image, fallback to the first image in the gallery
+    const coverImage = mediaList.find(m => m.isMain) || mediaList[0];
+    
+    // If no images exist locally, just share the standard text dossier gracefully
+    if (!coverImage) {
+      await sharePropertyText(property!);
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      
+      // Upload the local image to the Supabase bucket and wait for the public URL
+      const cloudUrl = await uploadToCloud(coverImage.uri, propertyId);
+      
+      if (cloudUrl) {
+        // Fire the deep link with the live internet URL attached
+        await sharePropertyText(property!, cloudUrl);
+      } else {
+        throw new Error('Supabase returned a null URL.');
+      }
+    } catch (error) {
+      Alert.alert(
+        'Cloud Sync Failed', 
+        'Could not synchronize the image with the cloud bucket. Sharing offline text dossier instead.', 
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Share Text Only', onPress: () => sharePropertyText(property!) }
+        ]
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   if (!property) return null;
   const isCurrentlyBooked = stays.length > 0;
 
   return (
-    // The top safe area uses the surface color to blend with the header
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.surface }]} edges={['top', 'left', 'right']}>
       <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerIconButton}>
@@ -98,13 +140,14 @@ export default function PropertyDetailsScreen() {
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{property.name}</Text>
         
-        {/* Brand green for WhatsApp stays recognizable in Dark Mode */}
+        {/* We keep the simple text-share in the header for quick, data-free sharing */}
         <TouchableOpacity onPress={() => sharePropertyText(property)} style={styles.headerIconButton}>
-          <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
+          <Ionicons name="share-outline" size={24} color={theme.text} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} style={{ backgroundColor: theme.background }}>
+        
         <View style={styles.mediaSection}>
           <View style={styles.mediaHeader}>
             <Text style={[styles.sectionHeading, { color: theme.text }]}>Asset Media</Text>
@@ -120,7 +163,6 @@ export default function PropertyDetailsScreen() {
                 <View key={media.id} style={{ position: 'relative' }}>
                   <Image source={{ uri: media.uri }} style={[styles.galleryImage, { backgroundColor: theme.border }]} />
                   
-                  {/* Action overlays adapt to theme surface color for neat contrast */}
                   <TouchableOpacity style={[styles.actionOverlay, { top: 12, left: 12, backgroundColor: theme.surface }]} onPress={() => handleSetMain(media.id)}>
                     <Ionicons name={media.isMain ? "star" : "star-outline"} size={22} color={media.isMain ? "#F59E0B" : theme.text} />
                   </TouchableOpacity>
@@ -142,8 +184,26 @@ export default function PropertyDetailsScreen() {
           )}
         </View>
 
+        {/* NEW: The Premium Cloud Dossier WhatsApp Button */}
+        <TouchableOpacity 
+          style={[
+            styles.cloudShareButton, 
+            { backgroundColor: isUploading ? theme.border : '#25D366' } // Brand WhatsApp Green
+          ]} 
+          onPress={handleCloudShare}
+          disabled={isUploading}
+        >
+          {isUploading ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <>
+              <Ionicons name="logo-whatsapp" size={22} color="#FFFFFF" />
+              <Text style={styles.cloudShareButtonText}>Generate Cloud Dossier</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
         <View style={styles.statusRow}>
-          {/* Dynamic pill styles that work perfectly in both light and dark mode using border colors */}
           <View style={[styles.statusBadge, { borderWidth: 1, borderColor: isCurrentlyBooked ? theme.danger : theme.success }]}>
             <Text style={[styles.statusText, { color: isCurrentlyBooked ? theme.danger : theme.success }]}>
               {isCurrentlyBooked ? '• Currently Booked' : '• Vacant / Available'}
@@ -217,18 +277,20 @@ const styles = StyleSheet.create({
   headerIconButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700', flex: 1, textAlign: 'center' },
   scrollContent: { padding: 16 },
-  mediaSection: { marginBottom: 20 },
+  mediaSection: { marginBottom: 16 },
   mediaHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   addMediaButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16 },
   addMediaText: { fontSize: 14, fontWeight: '600' },
   galleryScroll: { paddingBottom: 8 },
   galleryImage: { width: width * 0.7, height: 200, borderRadius: 12, marginRight: 12, resizeMode: 'cover' },
-  
-  // Theme updates removed hardcoded rgba for overlays to ensure contrast in both modes
   actionOverlay: { position: 'absolute', padding: 8, borderRadius: 20, elevation: 3 },
-  
   mediaContainer: { height: 160, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', borderWidth: 2 },
   mediaPlaceholderText: { fontSize: 13, marginTop: 8, fontWeight: '500' },
+  
+  // NEW: Styles for the Cloud Upload Action Button
+  cloudShareButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, marginBottom: 20, elevation: 2, gap: 8 },
+  cloudShareButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  
   statusRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
   statusText: { fontSize: 13, fontWeight: '700' },
