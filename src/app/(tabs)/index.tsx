@@ -1,11 +1,13 @@
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Image,
   Modal,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
@@ -14,6 +16,9 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { addMedia } from '../../database/mediaQueries';
 import { addProperty, deleteProperty, getProperties } from '../../database/propertyQueries';
 import { Property } from '../../types';
 
@@ -29,6 +34,9 @@ export default function PropertiesHubScreen() {
   const [roomsCount, setRoomsCount] = useState('');
   const [maxGuests, setMaxGuests] = useState('');
   const [petsAllowed, setPetsAllowed] = useState(false);
+  
+  // Temporary Media State (Holds images before the property is created)
+  const [tempPhotos, setTempPhotos] = useState<string[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -40,14 +48,36 @@ export default function PropertiesHubScreen() {
     setProperties(getProperties());
   };
 
-  const handleSaveProperty = () => {
+  const handleAddTempPhoto = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], // FIXED: Modern SDK 54 Array Syntax
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setTempPhotos(prev => [...prev, result.assets[0].uri]);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Could not open image picker.');
+    }
+  };
+
+  const removeTempPhoto = (indexToRemove: number) => {
+    setTempPhotos(prev => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  const handleSaveProperty = async () => {
     if (!name.trim()) {
       Alert.alert('Validation Error', 'Property Name is required.');
       return;
     }
     
     try {
-      addProperty(
+      // 1. Create the property and get the new ID immediately
+      const newPropertyId = addProperty(
         name, 
         isAirbnb, 
         address, 
@@ -56,8 +86,23 @@ export default function PropertiesHubScreen() {
         parseInt(maxGuests) || 1, 
         petsAllowed
       );
+
+      // 2. If there are photos, move them to permanent storage and link them to the new ID
+      if (tempPhotos.length > 0) {
+        for (const uri of tempPhotos) {
+          const fileName = `property_${newPropertyId}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+          const permanentUri = `${FileSystem.documentDirectory}${fileName}`;
+          
+          await FileSystem.copyAsync({
+            from: uri,
+            to: permanentUri,
+          });
+
+          addMedia(newPropertyId, permanentUri, 'photo');
+        }
+      }
       
-      // Reset State
+      // 3. Reset State
       setName('');
       setAddress('');
       setIsAirbnb(false);
@@ -65,6 +110,7 @@ export default function PropertiesHubScreen() {
       setRoomsCount('');
       setMaxGuests('');
       setPetsAllowed(false);
+      setTempPhotos([]);
       setModalVisible(false);
       loadData();
     } catch (error) {
@@ -86,7 +132,6 @@ export default function PropertiesHubScreen() {
   const renderPropertyCard = ({ item }: { item: Property }) => (
     <TouchableOpacity 
       style={styles.card} 
-      // FIXED: Explicitly casting the route bypasses the stale TypeScript generated dictionary
       onPress={() => router.push(`/properties/${item.id}` as any)}
       activeOpacity={0.7}
     >
@@ -118,7 +163,7 @@ export default function PropertiesHubScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.container}>
         
         <FlatList
@@ -142,13 +187,33 @@ export default function PropertiesHubScreen() {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>New Property Asset</Text>
+                <Text style={styles.modalTitle}>Create a new property</Text>
                 <TouchableOpacity onPress={() => setModalVisible(false)}>
                   <Ionicons name="close" size={28} color="#64748B" />
                 </TouchableOpacity>
               </View>
 
               <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
+                
+                {/* Temp Media Selection UI */}
+                <View style={styles.mediaSection}>
+                  <Text style={styles.label}>Property Photos</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tempGalleryScroll}>
+                    <TouchableOpacity style={styles.addPhotoSquare} onPress={handleAddTempPhoto}>
+                      <Ionicons name="camera" size={24} color="#94A3B8" />
+                      <Text style={styles.addPhotoText}>Add</Text>
+                    </TouchableOpacity>
+                    {tempPhotos.map((uri, index) => (
+                      <View key={index} style={styles.tempImageContainer}>
+                        <Image source={{ uri }} style={styles.tempImage} />
+                        <TouchableOpacity style={styles.removeTempPhotoBtn} onPress={() => removeTempPhoto(index)}>
+                          <Ionicons name="close" size={12} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
+
                 <Text style={styles.label}>Property Name *</Text>
                 <TextInput style={styles.input} placeholder="e.g., Oceanfront Villa" value={name} onChangeText={setName} />
 
@@ -186,7 +251,7 @@ export default function PropertiesHubScreen() {
                 </View>
 
                 <TouchableOpacity style={styles.saveButton} onPress={handleSaveProperty}>
-                  <Text style={styles.saveButtonText}>Create Asset Record</Text>
+                  <Text style={styles.saveButtonText}>Create Property</Text>
                 </TouchableOpacity>
               </ScrollView>
             </View>
@@ -214,10 +279,20 @@ const styles = StyleSheet.create({
   emptyStateText: { fontSize: 16, color: '#64748B' },
   fab: { position: 'absolute', bottom: 24, right: 24, width: 60, height: 60, borderRadius: 30, backgroundColor: '#0F172A', alignItems: 'center', justifyContent: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '85%' },
+  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A' },
   formScroll: { marginBottom: 20 },
+  
+  // Creation Media Styles
+  mediaSection: { marginBottom: 16 },
+  tempGalleryScroll: { paddingVertical: 4 },
+  addPhotoSquare: { width: 70, height: 70, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  addPhotoText: { fontSize: 10, color: '#94A3B8', marginTop: 4, fontWeight: '600' },
+  tempImageContainer: { marginRight: 10, position: 'relative' },
+  tempImage: { width: 70, height: 70, borderRadius: 8, backgroundColor: '#E2E8F0' },
+  removeTempPhotoBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#EF4444', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', elevation: 2 },
+
   label: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 6 },
   input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 8, padding: 12, fontSize: 16, color: '#0F172A', marginBottom: 14 },
   textArea: { minHeight: 70, textAlignVertical: 'top' },

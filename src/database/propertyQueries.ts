@@ -28,6 +28,9 @@ export function getStaysForProperty(propertyId: number): Stay[] {
   }
 }
 
+/**
+ * Inserts a property and returns the newly generated SQLite Row ID.
+ */
 export function addProperty(
   name: string, 
   isAirbnb: boolean, 
@@ -36,9 +39,9 @@ export function addProperty(
   roomsCount?: number,
   maxGuests?: number,
   petsAllowed?: boolean
-): void {
+): number {
   try {
-    db.runSync(
+    const result = db.runSync(
       `INSERT INTO properties (
         name, isAirbnb, address, isActive, description, roomsCount, maxGuests, petsAllowed
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
@@ -53,6 +56,8 @@ export function addProperty(
         petsAllowed ? 1 : 0
       ]
     );
+    // Return the Primary Key of the newly inserted property
+    return result.lastInsertRowId;
   } catch (error) {
     console.error('Error adding property:', error);
     throw error;

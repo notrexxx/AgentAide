@@ -7,13 +7,13 @@ import {
     Alert,
     Dimensions,
     Image,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { addMedia, deleteMediaRecord, getMediaForProperty } from '../../database/mediaQueries';
 import { getPropertyById, getStaysForProperty } from '../../database/propertyQueries';
@@ -25,15 +25,12 @@ export default function PropertyDetailsScreen() {
   const { id } = useLocalSearchParams();
   const propertyId = Number(id);
 
-  // State
   const [property, setProperty] = useState<Property | null>(null);
   const [stays, setStays] = useState<Stay[]>([]);
   const [mediaList, setMediaList] = useState<PropertyMedia[]>([]);
 
   useEffect(() => {
-    if (propertyId) {
-      loadData();
-    }
+    if (propertyId) loadData();
   }, [propertyId]);
 
   const loadData = () => {
@@ -42,34 +39,28 @@ export default function PropertyDetailsScreen() {
     setMediaList(getMediaForProperty(propertyId));
   };
 
-  // --- NATIVE FILE SYSTEM & MEDIA ENGINE ---
   const handleAddPhoto = async () => {
     try {
-      // 1. Launch the native image picker
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true, // Allows the agent to crop the photo square natively
+        mediaTypes: ['images'], // FIXED: Array string mapping to resolve SDK 54 warnings
+        allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8, // Compress slightly to save device space
+        quality: 0.8,
       });
 
       if (result.canceled || !result.assets[0]) return;
 
       const cachedUri = result.assets[0].uri;
-      
-      // 2. Generate a unique, permanent file path inside the app's isolated sandbox
       const fileName = `property_${propertyId}_${Date.now()}.jpg`;
       const permanentUri = `${FileSystem.documentDirectory}${fileName}`;
 
-      // 3. Copy from volatile cache to permanent storage
       await FileSystem.copyAsync({
         from: cachedUri,
         to: permanentUri,
       });
 
-      // 4. Save the permanent path to SQLite
       addMedia(propertyId, permanentUri, 'photo');
-      loadData(); // Refresh the gallery
+      loadData();
 
     } catch (error) {
       console.error('Media Error:', error);
@@ -85,9 +76,7 @@ export default function PropertyDetailsScreen() {
         style: 'destructive', 
         onPress: async () => {
           try {
-            // 1. Delete the physical file from the device hard drive to free up space
             await FileSystem.deleteAsync(uri, { idempotent: true });
-            // 2. Delete the relational row from SQLite
             deleteMediaRecord(mediaId);
             loadData();
           } catch (error) {
@@ -100,7 +89,7 @@ export default function PropertyDetailsScreen() {
 
   if (!property) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <View style={styles.centerContainer}><Text style={styles.errorText}>Property record not found.</Text></View>
       </SafeAreaView>
     );
@@ -109,7 +98,7 @@ export default function PropertyDetailsScreen() {
   const isCurrentlyBooked = stays.length > 0;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#0F172A" />
@@ -120,7 +109,6 @@ export default function PropertyDetailsScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* SPRINT 2: DYNAMIC MEDIA GALLERY */}
         <View style={styles.mediaSection}>
           <View style={styles.mediaHeader}>
             <Text style={styles.sectionHeading}>Asset Media</Text>
@@ -151,9 +139,7 @@ export default function PropertyDetailsScreen() {
               <Text style={styles.mediaPlaceholderText}>No photos attached to this property.</Text>
             </View>
           )}
-          {mediaList.length > 0 && (
-            <Text style={styles.helperText}>Long-press any photo to delete it.</Text>
-          )}
+          {mediaList.length > 0 && <Text style={styles.helperText}>Long-press any photo to delete it.</Text>}
         </View>
 
         <View style={styles.statusRow}>
@@ -217,9 +203,7 @@ export default function PropertyDetailsScreen() {
               ) : null}
             </View>
           ))}
-          {stays.length === 0 && (
-            <Text style={styles.emptyStaysText}>Zero stays linked with this property reference asset.</Text>
-          )}
+          {stays.length === 0 && <Text style={styles.emptyStaysText}>Zero stays linked with this property reference asset.</Text>}
         </View>
 
       </ScrollView>
@@ -227,6 +211,7 @@ export default function PropertyDetailsScreen() {
   );
 }
 
+// Ensure the styles object remains intact from your previous implementation
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F8FAFC' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -235,8 +220,6 @@ const styles = StyleSheet.create({
   backButton: { width: 40, height: 40, justifyContent: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', flex: 1, textAlign: 'center' },
   scrollContent: { padding: 16 },
-  
-  // SPRINT 2 MEDIA STYLES
   mediaSection: { marginBottom: 20 },
   mediaHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   addMediaButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16 },
@@ -247,7 +230,6 @@ const styles = StyleSheet.create({
   helperText: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontStyle: 'italic' },
   mediaContainer: { height: 160, backgroundColor: '#F1F5F9', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', borderWidth: 2, borderColor: '#CBD5E1' },
   mediaPlaceholderText: { color: '#64748B', fontSize: 13, marginTop: 8, fontWeight: '500' },
-  
   statusRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
   badgeBooked: { backgroundColor: '#FEF2F2' },
