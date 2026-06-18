@@ -1,30 +1,107 @@
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+    Alert,
+    Dimensions,
+    Image,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
+
+import { addMedia, deleteMediaRecord, getMediaForProperty } from '../../database/mediaQueries';
 import { getPropertyById, getStaysForProperty } from '../../database/propertyQueries';
-import { Property, Stay } from '../../types';
+import { Property, PropertyMedia, Stay } from '../../types';
+
+const { width } = Dimensions.get('window');
 
 export default function PropertyDetailsScreen() {
   const { id } = useLocalSearchParams();
+  const propertyId = Number(id);
+
+  // State
   const [property, setProperty] = useState<Property | null>(null);
   const [stays, setStays] = useState<Stay[]>([]);
+  const [mediaList, setMediaList] = useState<PropertyMedia[]>([]);
 
   useEffect(() => {
-    if (id) {
-      const propData = getPropertyById(Number(id));
-      const stayData = getStaysForProperty(Number(id));
-      setProperty(propData);
-      setStays(stayData);
+    if (propertyId) {
+      loadData();
     }
-  }, [id]);
+  }, [propertyId]);
+
+  const loadData = () => {
+    setProperty(getPropertyById(propertyId));
+    setStays(getStaysForProperty(propertyId));
+    setMediaList(getMediaForProperty(propertyId));
+  };
+
+  // --- NATIVE FILE SYSTEM & MEDIA ENGINE ---
+  const handleAddPhoto = async () => {
+    try {
+      // 1. Launch the native image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true, // Allows the agent to crop the photo square natively
+        aspect: [4, 3],
+        quality: 0.8, // Compress slightly to save device space
+      });
+
+      if (result.canceled || !result.assets[0]) return;
+
+      const cachedUri = result.assets[0].uri;
+      
+      // 2. Generate a unique, permanent file path inside the app's isolated sandbox
+      const fileName = `property_${propertyId}_${Date.now()}.jpg`;
+      const permanentUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      // 3. Copy from volatile cache to permanent storage
+      await FileSystem.copyAsync({
+        from: cachedUri,
+        to: permanentUri,
+      });
+
+      // 4. Save the permanent path to SQLite
+      addMedia(propertyId, permanentUri, 'photo');
+      loadData(); // Refresh the gallery
+
+    } catch (error) {
+      console.error('Media Error:', error);
+      Alert.alert('Error', 'Failed to save the image to local storage.');
+    }
+  };
+
+  const handleDeletePhoto = (mediaId: number, uri: string) => {
+    Alert.alert('Delete Photo', 'Remove this image from the property?', [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: 'Delete', 
+        style: 'destructive', 
+        onPress: async () => {
+          try {
+            // 1. Delete the physical file from the device hard drive to free up space
+            await FileSystem.deleteAsync(uri, { idempotent: true });
+            // 2. Delete the relational row from SQLite
+            deleteMediaRecord(mediaId);
+            loadData();
+          } catch (error) {
+            Alert.alert('Error', 'Failed to delete the image.');
+          }
+        }
+      }
+    ]);
+  };
 
   if (!property) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>Property record not found.</Text>
-        </View>
+        <View style={styles.centerContainer}><Text style={styles.errorText}>Property record not found.</Text></View>
       </SafeAreaView>
     );
   }
@@ -43,9 +120,40 @@ export default function PropertyDetailsScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        <View style={styles.mediaContainer}>
-          <Ionicons name="images-outline" size={40} color="#94A3B8" />
-          <Text style={styles.mediaPlaceholderText}>Media Gallery Placeholder (Sprint 2 Engine)</Text>
+        {/* SPRINT 2: DYNAMIC MEDIA GALLERY */}
+        <View style={styles.mediaSection}>
+          <View style={styles.mediaHeader}>
+            <Text style={styles.sectionHeading}>Asset Media</Text>
+            <TouchableOpacity onPress={handleAddPhoto} style={styles.addMediaButton}>
+              <Ionicons name="camera-outline" size={16} color="#3B82F6" />
+              <Text style={styles.addMediaText}> Add Photo</Text>
+            </TouchableOpacity>
+          </View>
+
+          {mediaList.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.galleryScroll}>
+              {mediaList.map((media) => (
+                <TouchableOpacity 
+                  key={media.id} 
+                  onLongPress={() => handleDeletePhoto(media.id, media.uri)}
+                  activeOpacity={0.8}
+                >
+                  <Image source={{ uri: media.uri }} style={styles.galleryImage} />
+                  <View style={styles.deleteOverlay}>
+                    <Ionicons name="trash" size={16} color="#FFFFFF" />
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.mediaContainer}>
+              <Ionicons name="images-outline" size={40} color="#CBD5E1" />
+              <Text style={styles.mediaPlaceholderText}>No photos attached to this property.</Text>
+            </View>
+          )}
+          {mediaList.length > 0 && (
+            <Text style={styles.helperText}>Long-press any photo to delete it.</Text>
+          )}
         </View>
 
         <View style={styles.statusRow}>
@@ -54,7 +162,6 @@ export default function PropertyDetailsScreen() {
               {isCurrentlyBooked ? '• Currently Booked' : '• Vacant / Available'}
             </Text>
           </View>
-          {/* FIXED: Replaced strict === 1 with boolean truthiness check to satisfy TS and SQLite */}
           {!!property.isAirbnb && (
             <View style={[styles.statusBadge, { backgroundColor: '#FF5A5F' }]}>
               <FontAwesome5 name="airbnb" size={12} color="#FFFFFF" />
@@ -128,8 +235,19 @@ const styles = StyleSheet.create({
   backButton: { width: 40, height: 40, justifyContent: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', flex: 1, textAlign: 'center' },
   scrollContent: { padding: 16 },
-  mediaContainer: { height: 180, backgroundColor: '#F1F5F9', borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', borderWidth: 2, borderColor: '#CBD5E1', marginBottom: 16 },
+  
+  // SPRINT 2 MEDIA STYLES
+  mediaSection: { marginBottom: 20 },
+  mediaHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  addMediaButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16 },
+  addMediaText: { fontSize: 14, fontWeight: '600', color: '#3B82F6' },
+  galleryScroll: { paddingBottom: 8 },
+  galleryImage: { width: width * 0.7, height: 200, borderRadius: 12, marginRight: 12, backgroundColor: '#E2E8F0' },
+  deleteOverlay: { position: 'absolute', bottom: 12, right: 24, backgroundColor: 'rgba(239, 68, 68, 0.9)', padding: 6, borderRadius: 12 },
+  helperText: { fontSize: 11, color: '#94A3B8', marginTop: 4, fontStyle: 'italic' },
+  mediaContainer: { height: 160, backgroundColor: '#F1F5F9', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', borderWidth: 2, borderColor: '#CBD5E1' },
   mediaPlaceholderText: { color: '#64748B', fontSize: 13, marginTop: 8, fontWeight: '500' },
+  
   statusRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
   badgeBooked: { backgroundColor: '#FEF2F2' },
@@ -151,6 +269,5 @@ const styles = StyleSheet.create({
   stayLogDate: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
   stayLogCount: { fontSize: 13, fontWeight: '500', color: '#64748B' },
   stayLogSubText: { fontSize: 12, color: '#64748B' },
-  // FIXED: Changed 'style' to 'fontStyle' for React Native compatibility
   emptyStaysText: { fontSize: 13, color: '#94A3B8', fontStyle: 'italic' }
 });
