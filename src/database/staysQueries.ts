@@ -33,20 +33,41 @@ export function addStay(
       `INSERT INTO stays (id, propertyId, guestCount, kidsCount, petsCount, specialRequests, arrivalDate, departureDate, flightInfo) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
-        id,
-        propertyId, 
-        guestCount, 
-        kidsCount, 
-        petsCount, 
-        specialRequests, 
-        arrivalDate, 
-        departureDate, 
-        flightInfo
+        id, propertyId, guestCount, kidsCount, petsCount, 
+        specialRequests, arrivalDate, departureDate, flightInfo
       ]
     );
     return id;
   } catch (error) {
     console.error('Error creating stay row entry:', error);
+    throw error;
+  }
+}
+
+// 🚨 NEW: The Database Update Function for Stays
+export function updateStay(
+  id: string,
+  propertyId: string,
+  guestCount: number,
+  kidsCount: number,
+  petsCount: number,
+  specialRequests: string,
+  arrivalDate: string,
+  departureDate: string,
+  flightInfo: string
+): void {
+  try {
+    db.runSync(
+      `UPDATE stays 
+       SET propertyId = ?, guestCount = ?, kidsCount = ?, petsCount = ?, specialRequests = ?, arrivalDate = ?, departureDate = ?, flightInfo = ? 
+       WHERE id = ?;`,
+      [
+        propertyId, guestCount, kidsCount, petsCount, specialRequests, 
+        arrivalDate, departureDate, flightInfo, id
+      ]
+    );
+  } catch (error) {
+    console.error('Error updating stay:', error);
     throw error;
   }
 }

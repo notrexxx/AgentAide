@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
@@ -9,12 +10,11 @@ import {
   Text, TextInput, TouchableOpacity, useColorScheme, View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// 🚨 NEW NATIVE DATE/TIME PICKER
-import DateTimePicker from '@react-native-community/datetimepicker';
 
 import HeroHeader from '../../components/HeroHeader';
 import { getProperties } from '../../database/propertyQueries';
-import { addStay, deleteStay, getStays } from '../../database/staysQueries';
+// 🚨 NEW IMPORT: updateStay included
+import { addStay, deleteStay, getStays, updateStay } from '../../database/staysQueries';
 import { Colors } from '../../theme/colors';
 import { Property, Stay } from '../../types';
 import { parseTicketText } from '../../utils/ticketParser';
@@ -38,13 +38,14 @@ export default function StaysScreen() {
   const [isPropertyModalVisible, setPropertyModalVisible] = useState(false);
   const [activeStayDetails, setActiveStayDetails] = useState<LocalStayWithProperty | null>(null);
   
-  // Basic Form States
+  // 🚨 NEW: Track if we are editing an existing stay
+  const [editingStayId, setEditingStayId] = useState<string | null>(null);
+
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [flightInfo, setFlightInfo] = useState('');
   const [guestCount, setGuestCount] = useState('1');
   const [specialRequests, setSpecialRequests] = useState('');
 
-  // 🚨 Native Date Picker States
   const [arrivalDateObj, setArrivalDateObj] = useState(new Date());
   const [departureDateObj, setDepartureDateObj] = useState(new Date());
   const [arrivalTimeObj, setArrivalTimeObj] = useState(new Date());
@@ -53,8 +54,7 @@ export default function StaysScreen() {
   const [showDeparturePicker, setShowDeparturePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  // Formatter functions
-  const formatDate = (date: Date) => date.toLocaleDateString('en-US'); // MM/DD/YYYY
+  const formatDate = (date: Date) => date.toLocaleDateString('en-US'); 
   const formatTime = (date: Date) => date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
@@ -65,6 +65,7 @@ export default function StaysScreen() {
   };
 
   const openCreateModal = () => {
+    setEditingStayId(null);
     setModalMode('options');
     setSelectedPropertyId(null);
     setFlightInfo('');
@@ -73,6 +74,38 @@ export default function StaysScreen() {
     setArrivalTimeObj(new Date());
     setGuestCount('1');
     setSpecialRequests('');
+    setModalVisible(true);
+  };
+
+  // 🚨 NEW: Populate the edit form and open it
+  const handleEditStay = (stay: LocalStayWithProperty) => {
+    setEditingStayId(stay.id);
+    setSelectedPropertyId(stay.propertyId);
+    setFlightInfo(stay.flightInfo || '');
+    setGuestCount(stay.guestCount.toString());
+    setSpecialRequests(stay.specialRequests || '');
+
+    // Safely parse existing string dates back to JS Date Objects for the Native Pickers
+    const arrParts = stay.arrivalDate.split(' at ');
+    const pArrDate = new Date(arrParts[0]);
+    if (!isNaN(pArrDate.getTime())) setArrivalDateObj(pArrDate);
+
+    if (arrParts[1]) {
+      const pTime = new Date(`${arrParts[0]} ${arrParts[1]}`);
+      if (!isNaN(pTime.getTime())) setArrivalTimeObj(pTime);
+    } else {
+      setArrivalTimeObj(new Date());
+    }
+
+    if (stay.departureDate && stay.departureDate !== 'TBD') {
+      const pDep = new Date(stay.departureDate);
+      if (!isNaN(pDep.getTime())) setDepartureDateObj(pDep);
+    } else {
+      setDepartureDateObj(new Date());
+    }
+
+    setActiveStayDetails(null); // Close the info modal
+    setModalMode('form');
     setModalVisible(true);
   };
 
@@ -85,7 +118,6 @@ export default function StaysScreen() {
       }
       const parsedData = parseTicketText(clipboardContent);
       setFlightInfo(parsedData.flightInfo);
-      // Attempt to parse regex dates into actual date objects
       if (parsedData.arrivalDate) {
         const pDate = new Date(parsedData.arrivalDate);
         if (!isNaN(pDate.getTime())) setArrivalDateObj(pDate);
@@ -103,11 +135,16 @@ export default function StaysScreen() {
       return;
     }
     try {
-      // Rebuild the final string format exactly as your DB expects it
       const finalArrival = `${formatDate(arrivalDateObj)} at ${formatTime(arrivalTimeObj)}`;
       const finalDeparture = formatDate(departureDateObj);
 
-      addStay(selectedPropertyId, parseInt(guestCount) || 1, 0, 0, specialRequests, finalArrival, finalDeparture, flightInfo);
+      // 🚨 UPDATED LOGIC: Edit vs Add
+      if (editingStayId) {
+        updateStay(editingStayId, selectedPropertyId, parseInt(guestCount) || 1, 0, 0, specialRequests, finalArrival, finalDeparture, flightInfo);
+      } else {
+        addStay(selectedPropertyId, parseInt(guestCount) || 1, 0, 0, specialRequests, finalArrival, finalDeparture, flightInfo);
+      }
+      
       setModalVisible(false);
       loadData();
     } catch (error) {
@@ -187,10 +224,10 @@ export default function StaysScreen() {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.surface }]}>
               <View style={styles.modalHeader}>
-                <TouchableOpacity onPress={() => modalMode === 'form' ? setModalMode('options') : setModalVisible(false)}>
-                  <Ionicons name={modalMode === 'form' ? "arrow-back" : "close"} size={28} color={theme.subText} />
+                <TouchableOpacity onPress={() => modalMode === 'form' && !editingStayId ? setModalMode('options') : setModalVisible(false)}>
+                  <Ionicons name={modalMode === 'form' && !editingStayId ? "arrow-back" : "close"} size={28} color={theme.subText} />
                 </TouchableOpacity>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>{modalMode === 'options' ? 'Import Itinerary' : 'Stay Details'}</Text>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>{editingStayId ? 'Edit Stay' : modalMode === 'options' ? 'Import Itinerary' : 'Stay Details'}</Text>
                 <View style={{ width: 28 }} /> 
               </View>
 
@@ -251,43 +288,21 @@ export default function StaysScreen() {
                   <View style={styles.rowInputs}>
                     <View style={{ flex: 1, marginRight: 12 }}>
                       <Text style={[styles.label, { color: theme.text }]}>Arrival Date *</Text>
-                      <TouchableOpacity 
-                        style={[styles.dateButton, { backgroundColor: theme.background, borderColor: theme.border }]} 
-                        onPress={() => setShowArrivalPicker(true)}
-                      >
+                      <TouchableOpacity style={[styles.dateButton, { backgroundColor: theme.background, borderColor: theme.border }]} onPress={() => setShowArrivalPicker(true)}>
                         <Text style={{ color: theme.text }}>{formatDate(arrivalDateObj)}</Text>
                       </TouchableOpacity>
                       {showArrivalPicker && (
-                        <DateTimePicker
-                          value={arrivalDateObj}
-                          mode="date"
-                          display="default"
-                          onChange={(event, selectedDate) => {
-                            setShowArrivalPicker(Platform.OS === 'ios');
-                            if (selectedDate) setArrivalDateObj(selectedDate);
-                          }}
-                        />
+                        <DateTimePicker value={arrivalDateObj} mode="date" display="default" onChange={(e, d) => { setShowArrivalPicker(Platform.OS === 'ios'); if(d) setArrivalDateObj(d); }} />
                       )}
                     </View>
                     
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.label, { color: theme.text }]}>Arrival Time</Text>
-                      <TouchableOpacity 
-                        style={[styles.dateButton, { backgroundColor: theme.background, borderColor: theme.border }]} 
-                        onPress={() => setShowTimePicker(true)}
-                      >
+                      <TouchableOpacity style={[styles.dateButton, { backgroundColor: theme.background, borderColor: theme.border }]} onPress={() => setShowTimePicker(true)}>
                         <Text style={{ color: theme.text }}>{formatTime(arrivalTimeObj)}</Text>
                       </TouchableOpacity>
                       {showTimePicker && (
-                        <DateTimePicker
-                          value={arrivalTimeObj}
-                          mode="time"
-                          display="default"
-                          onChange={(event, selectedDate) => {
-                            setShowTimePicker(Platform.OS === 'ios');
-                            if (selectedDate) setArrivalTimeObj(selectedDate);
-                          }}
-                        />
+                        <DateTimePicker value={arrivalTimeObj} mode="time" display="default" onChange={(e, d) => { setShowTimePicker(Platform.OS === 'ios'); if(d) setArrivalTimeObj(d); }} />
                       )}
                     </View>
                   </View>
@@ -295,22 +310,11 @@ export default function StaysScreen() {
                   <View style={styles.rowInputs}>
                     <View style={{ flex: 1, marginRight: 12 }}>
                       <Text style={[styles.label, { color: theme.text }]}>Departure Date</Text>
-                      <TouchableOpacity 
-                        style={[styles.dateButton, { backgroundColor: theme.background, borderColor: theme.border }]} 
-                        onPress={() => setShowDeparturePicker(true)}
-                      >
+                      <TouchableOpacity style={[styles.dateButton, { backgroundColor: theme.background, borderColor: theme.border }]} onPress={() => setShowDeparturePicker(true)}>
                         <Text style={{ color: theme.text }}>{formatDate(departureDateObj)}</Text>
                       </TouchableOpacity>
                       {showDeparturePicker && (
-                        <DateTimePicker
-                          value={departureDateObj}
-                          mode="date"
-                          display="default"
-                          onChange={(event, selectedDate) => {
-                            setShowDeparturePicker(Platform.OS === 'ios');
-                            if (selectedDate) setDepartureDateObj(selectedDate);
-                          }}
-                        />
+                        <DateTimePicker value={departureDateObj} mode="date" display="default" onChange={(e, d) => { setShowDeparturePicker(Platform.OS === 'ios'); if(d) setDepartureDateObj(d); }} />
                       )}
                     </View>
                     <View style={{ flex: 0.5 }}>
@@ -323,7 +327,7 @@ export default function StaysScreen() {
                   <TextInput style={[styles.input, styles.textArea, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} value={specialRequests} onChangeText={setSpecialRequests} placeholder="Early check-in, extra towels..." multiline numberOfLines={3} />
 
                   <TouchableOpacity style={[styles.saveButton, { backgroundColor: theme.primary }]} onPress={handleSaveStay}>
-                    <Text style={styles.saveButtonText}>Save Itinerary</Text>
+                    <Text style={styles.saveButtonText}>{editingStayId ? 'Save Changes' : 'Save Itinerary'}</Text>
                   </TouchableOpacity>
                 </ScrollView>
               )}
@@ -344,11 +348,7 @@ export default function StaysScreen() {
                 {properties.map(prop => (
                   <TouchableOpacity 
                     key={prop.id}
-                    style={[
-                      styles.propertyListItem, 
-                      { borderBottomColor: theme.border },
-                      selectedPropertyId === prop.id && { backgroundColor: theme.primary + '10' }
-                    ]}
+                    style={[styles.propertyListItem, { borderBottomColor: theme.border }, selectedPropertyId === prop.id && { backgroundColor: theme.primary + '10' }]}
                     onPress={() => { setSelectedPropertyId(prop.id); setPropertyModalVisible(false); }}
                   >
                     {prop.mainImageUri ? (
@@ -358,9 +358,7 @@ export default function StaysScreen() {
                         <Ionicons name="home" size={20} color={theme.subText} />
                       </View>
                     )}
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.propertyListTitle, { color: theme.text }]}>{prop.name}</Text>
-                    </View>
+                    <View style={{ flex: 1 }}><Text style={[styles.propertyListTitle, { color: theme.text }]}>{prop.name}</Text></View>
                     {selectedPropertyId === prop.id && <Ionicons name="checkmark-circle" size={24} color={theme.primary} />}
                   </TouchableOpacity>
                 ))}
@@ -369,17 +367,24 @@ export default function StaysScreen() {
           </View>
         </Modal>
 
-        {/* DETAILS MODAL FOR STAYS HUB */}
+        {/* DETAILS MODAL */}
         <Modal visible={!!activeStayDetails} animationType="slide" transparent={true}>
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.surface, maxHeight: '95%' }]}>
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: theme.text }]}>Stay Details</Text>
+                
+                {/* 🚨 NEW: Edit & Delete buttons side by side */}
                 <View style={{ flexDirection: 'row', gap: 16 }}>
                   {activeStayDetails && (
-                    <TouchableOpacity onPress={() => handleDelete(activeStayDetails.id)}>
-                      <Ionicons name="trash-outline" size={24} color={theme.danger} />
-                    </TouchableOpacity>
+                    <>
+                      <TouchableOpacity onPress={() => handleEditStay(activeStayDetails)}>
+                        <Ionicons name="pencil-outline" size={24} color={theme.text} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDelete(activeStayDetails.id)}>
+                        <Ionicons name="trash-outline" size={24} color={theme.danger} />
+                      </TouchableOpacity>
+                    </>
                   )}
                   <TouchableOpacity onPress={() => setActiveStayDetails(null)}>
                     <Ionicons name="close" size={26} color={theme.subText} />
@@ -389,33 +394,19 @@ export default function StaysScreen() {
 
               {activeStayDetails && (
                 <ScrollView showsVerticalScrollIndicator={false}>
-                  {activeStayDetails.mainImageUri && (
-                    <Image source={{ uri: activeStayDetails.mainImageUri }} style={styles.detailsBanner} />
-                  )}
+                  {activeStayDetails.mainImageUri && <Image source={{ uri: activeStayDetails.mainImageUri }} style={styles.detailsBanner} />}
                   
                   <Text style={[styles.detailsSectionTitle, { color: theme.primary, marginTop: 16 }]}>Property</Text>
                   <Text style={[styles.detailsTextLarge, { color: theme.text }]}>{activeStayDetails.propertyName}</Text>
 
                   <View style={styles.detailsGrid}>
-                    <View style={styles.detailsBox}>
-                      <Text style={[styles.detailsLabel, { color: theme.subText }]}>Arrival</Text>
-                      <Text style={[styles.detailsValue, { color: theme.text }]}>{activeStayDetails.arrivalDate}</Text>
-                    </View>
-                    <View style={styles.detailsBox}>
-                      <Text style={[styles.detailsLabel, { color: theme.subText }]}>Departure</Text>
-                      <Text style={[styles.detailsValue, { color: theme.text }]}>{activeStayDetails.departureDate}</Text>
-                    </View>
+                    <View style={styles.detailsBox}><Text style={[styles.detailsLabel, { color: theme.subText }]}>Arrival</Text><Text style={[styles.detailsValue, { color: theme.text }]}>{activeStayDetails.arrivalDate}</Text></View>
+                    <View style={styles.detailsBox}><Text style={[styles.detailsLabel, { color: theme.subText }]}>Departure</Text><Text style={[styles.detailsValue, { color: theme.text }]}>{activeStayDetails.departureDate}</Text></View>
                   </View>
 
                   <View style={styles.detailsGrid}>
-                    <View style={styles.detailsBox}>
-                      <Text style={[styles.detailsLabel, { color: theme.subText }]}>Flight Info</Text>
-                      <Text style={[styles.detailsValue, { color: theme.text }]}>{activeStayDetails.flightInfo || 'N/A'}</Text>
-                    </View>
-                    <View style={styles.detailsBox}>
-                      <Text style={[styles.detailsLabel, { color: theme.subText }]}>Guests</Text>
-                      <Text style={[styles.detailsValue, { color: theme.text }]}>{activeStayDetails.guestCount}</Text>
-                    </View>
+                    <View style={styles.detailsBox}><Text style={[styles.detailsLabel, { color: theme.subText }]}>Flight Info</Text><Text style={[styles.detailsValue, { color: theme.text }]}>{activeStayDetails.flightInfo || 'N/A'}</Text></View>
+                    <View style={styles.detailsBox}><Text style={[styles.detailsLabel, { color: theme.subText }]}>Guests</Text><Text style={[styles.detailsValue, { color: theme.text }]}>{activeStayDetails.guestCount}</Text></View>
                   </View>
 
                   {activeStayDetails.specialRequests ? (
@@ -456,7 +447,7 @@ const styles = StyleSheet.create({
   cardBanner: { width: '100%', height: 100, resizeMode: 'cover' },
   cardBannerPlaceholder: { width: '100%', height: 100, alignItems: 'center', justifyContent: 'center' },
   cardBody: { padding: 16 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   propertyName: { fontSize: 18, fontWeight: '700', flex: 1 },
   iconButton: { padding: 4 },
   row: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
@@ -483,7 +474,7 @@ const styles = StyleSheet.create({
   actionSubtitle: { fontSize: 13 },
   label: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
   input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 20 },
-  dateButton: { borderWidth: 1, borderRadius: 8, padding: 16, marginBottom: 20, justifyContent: 'center' }, // New button style for dates
+  dateButton: { borderWidth: 1, borderRadius: 8, padding: 16, marginBottom: 20, justifyContent: 'center' },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   rowInputs: { flexDirection: 'row', justifyContent: 'space-between' },
   saveButton: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },

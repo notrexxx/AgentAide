@@ -90,7 +90,6 @@ export default function PropertiesHubScreen() {
     }
   };
 
-  // 🚨 UPGRADED LOGIC: Calculates dates accurately for the pills
   const getPropertyStatus = useCallback((propertyId: string) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -113,12 +112,10 @@ export default function PropertiesHubScreen() {
         arrDate.setHours(0, 0, 0, 0);
         if (depDate && !isNaN(depDate.getTime())) depDate.setHours(0, 0, 0, 0);
 
-        // If today is exactly between arrival and departure, it is physically Occupied
         if (today.getTime() >= arrDate.getTime() && (!depDate || today.getTime() <= depDate.getTime())) {
           isOccupied = true;
         }
 
-        // If the arrival is strictly in the future, it is Reserved
         if (arrDate.getTime() > today.getTime()) {
           isReserved = true;
           if (!nextStay || arrDate.getTime() < new Date((nextStay as StayWithProperty).arrivalDate.split(' at ')[0]).getTime()) {
@@ -128,10 +125,7 @@ export default function PropertiesHubScreen() {
       }
     });
 
-    // Vacant ONLY if it is neither occupied nor reserved for the future
-    const isVacant = !isOccupied && !isReserved;
-
-    return { isOccupied, isReserved, isVacant, nextStay };
+    return { isOccupied, isReserved, isVacant: !isOccupied && !isReserved, nextStay };
   }, [allStays]);
 
   const filteredProperties = useMemo(() => {
@@ -150,7 +144,11 @@ export default function PropertiesHubScreen() {
     const status = getPropertyStatus(item.id);
 
     return (
-      <TouchableOpacity style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]} onPress={() => router.push(`/properties/${item.id}` as any)} activeOpacity={0.8}>
+      <TouchableOpacity 
+        style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]} 
+        onPress={() => router.push(`/properties/${item.id}` as any)}
+        activeOpacity={0.8}
+      >
         {item.mainImageUri ? (
           <Image source={{ uri: item.mainImageUri }} style={styles.cardBanner} />
         ) : (
@@ -165,22 +163,23 @@ export default function PropertiesHubScreen() {
             </View>
           </View>
 
-          {/* 🚨 MUTUALLY EXCLUSIVE PILLS */}
           <View style={styles.pillsRow}>
-            {status.isOccupied ? (
+            {status.isVacant && (
+              <View style={[styles.pill, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                <View style={[styles.pillDot, { backgroundColor: '#10B981' }]} />
+                <Text style={[styles.pillText, { color: '#10B981' }]}>Vacant</Text>
+              </View>
+            )}
+            {status.isOccupied && (
               <View style={[styles.pill, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
                 <View style={[styles.pillDot, { backgroundColor: '#EF4444' }]} />
                 <Text style={[styles.pillText, { color: '#EF4444' }]}>Occupied</Text>
               </View>
-            ) : status.isReserved ? (
+            )}
+            {status.isReserved && (
               <View style={[styles.pill, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
                 <View style={[styles.pillDot, { backgroundColor: '#3B82F6' }]} />
                 <Text style={[styles.pillText, { color: '#3B82F6' }]}>Reserved</Text>
-              </View>
-            ) : (
-              <View style={[styles.pill, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-                <View style={[styles.pillDot, { backgroundColor: '#10B981' }]} />
-                <Text style={[styles.pillText, { color: '#10B981' }]}>Vacant</Text>
               </View>
             )}
           </View>
@@ -214,7 +213,7 @@ export default function PropertiesHubScreen() {
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
             <>
-              {/* DROPPED SUBTITLE TO SAVE SPACE */}
+              {/* 🚨 FIXED: Added subtitle="" to satisfy the HeroHeaderProps */}
               <HeroHeader 
                 title="Properties Hub" 
                 subtitle=""
@@ -359,7 +358,7 @@ const styles = StyleSheet.create({
   switchLabel: { fontSize: 15, fontWeight: '500' },
   saveButton: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
   saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  searchBarContainer: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 16, paddingHorizontal: 12, height: 46, borderRadius: 12, borderWidth: 1 },
+  searchBarContainer: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 8, paddingHorizontal: 12, height: 46, borderRadius: 12, borderWidth: 1 },
   searchIcon: { marginRight: 8 },
   searchTextInput: { flex: 1, fontSize: 15, height: '100%' },
   filterTabsScroll: { marginTop: 12, marginBottom: 4 },
