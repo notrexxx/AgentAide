@@ -21,10 +21,8 @@ import { addMedia, deleteMediaRecord, getMediaForProperty, setMainImage } from '
 import { getPropertyById, getStaysForProperty } from '../../database/propertyQueries';
 import { Colors } from '../../theme/colors';
 import { Property, PropertyMedia, Stay } from '../../types';
-import { shareLocalPhoto, sharePropertyText } from '../../utils/whatsappFormatter';
-
-// IMPORT RESTORED: Both cloud functions are correctly imported here
 import { uploadDossierText, uploadToCloud } from '../../utils/cloudSync';
+import { shareLocalPhoto, sharePropertyText } from '../../utils/whatsappFormatter';
 
 const { width } = Dimensions.get('window');
 
@@ -92,20 +90,38 @@ export default function PropertyDetailsScreen() {
   };
 
   const handleCloudShare = async () => {
-    const coverImage = mediaList.find(m => m.isMain) || mediaList[0];
-    
+    if (mediaList.length === 0) {
+      await uploadDossierText(property!, null, []);
+      const webUrl = `https://agentaide-web.vercel.app/property/${propertyId}`;
+      await sharePropertyText(property!, webUrl);
+      return;
+    }
+
     try {
       setIsUploading(true);
-      let cloudUrl = null;
+      let validUrls: string[] = [];
+      let coverUrl: string | null = null;
 
-      if (coverImage) {
-        cloudUrl = await uploadToCloud(coverImage.uri, propertyId);
+      // Loop and upload all images
+      for (const media of mediaList) {
+        const uploadedUrl = await uploadToCloud(media.uri, propertyId);
+        if (uploadedUrl) {
+          validUrls.push(uploadedUrl);
+          if (media.isMain) {
+            coverUrl = uploadedUrl;
+          }
+        }
+      }
+
+      // Fallback if no main image was set
+      if (!coverUrl && validUrls.length > 0) {
+        coverUrl = validUrls[0];
       }
       
-      await uploadDossierText(property!, cloudUrl);
+      // Upload text + all image URLs
+      await uploadDossierText(property!, coverUrl, validUrls);
       
       const webUrl = `https://agentaide-web.vercel.app/property/${propertyId}`;
-      
       await sharePropertyText(property!, webUrl);
 
     } catch (error) {

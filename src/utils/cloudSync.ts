@@ -52,8 +52,11 @@ export async function uploadToCloud(localUri: string, propertyId: number): Promi
   }
 }
 
-// Uploads the property text details to the shared brain
-export async function uploadDossierText(property: Property, coverImageUrl: string | null) {
+export async function uploadDossierText(
+  property: Property, 
+  coverImageUrl: string | null,
+  galleryUrls: string[] = []
+) {
   try {
     const { error } = await supabase
       .from('public_dossiers')
@@ -65,7 +68,8 @@ export async function uploadDossierText(property: Property, coverImageUrl: strin
         rooms_count: property.roomsCount,
         max_guests: property.maxGuests,
         pets_allowed: property.petsAllowed,
-        cover_image_url: coverImageUrl
+        cover_image_url: coverImageUrl,
+        gallery_urls: galleryUrls
       });
 
     if (error) throw error;
