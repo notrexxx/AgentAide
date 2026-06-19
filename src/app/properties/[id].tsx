@@ -4,21 +4,18 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Image,
+  ActivityIndicator, Alert, Dimensions, Image,
+  Modal,
   ScrollView,
   StyleSheet,
-  Text,
-  TouchableOpacity,
-  useColorScheme,
-  View
+  Switch,
+  Text, TextInput, TouchableOpacity, useColorScheme, View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { addMedia, deleteMediaRecord, getMediaForProperty, setMainImage } from '../../database/mediaQueries';
-import { getPropertyById, getStaysForProperty } from '../../database/propertyQueries';
+// IMPORT RESTORED: Added updateProperty and deleteProperty
+import { deleteProperty, getPropertyById, getStaysForProperty, updateProperty } from '../../database/propertyQueries';
 import { Colors } from '../../theme/colors';
 import { Property, PropertyMedia, Stay } from '../../types';
 import { uploadDossierText, uploadToCloud } from '../../utils/cloudSync';
@@ -32,14 +29,22 @@ export default function PropertyDetailsScreen() {
   const theme = Colors[isDark ? 'dark' : 'light'];
 
   const { id } = useLocalSearchParams();
-  // CHANGED: We now safely extract the UUID string instead of parsing it to a Number
   const propertyId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '';
 
   const [property, setProperty] = useState<Property | null>(null);
   const [stays, setStays] = useState<Stay[]>([]);
   const [mediaList, setMediaList] = useState<PropertyMedia[]>([]);
-  
   const [isUploading, setIsUploading] = useState(false);
+
+  // NEW: Edit Modal States
+  const [isEditModalVisible, setEditModalVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editIsAirbnb, setEditIsAirbnb] = useState(false);
+  const [editDescription, setEditDescription] = useState('');
+  const [editRoomsCount, setEditRoomsCount] = useState('');
+  const [editMaxGuests, setEditMaxGuests] = useState('');
+  const [editPetsAllowed, setEditPetsAllowed] = useState(false);
 
   useEffect(() => { if (propertyId) loadData(); }, [propertyId]);
 
@@ -47,6 +52,56 @@ export default function PropertyDetailsScreen() {
     setProperty(getPropertyById(propertyId));
     setStays(getStaysForProperty(propertyId));
     setMediaList(getMediaForProperty(propertyId));
+  };
+
+  // NEW: Open Edit Form pre-filled with data
+  const openEditModal = () => {
+    if (!property) return;
+    setEditName(property.name);
+    setEditAddress(property.address || '');
+    setEditIsAirbnb(property.isAirbnb);
+    setEditDescription(property.description || '');
+    setEditRoomsCount(property.roomsCount?.toString() || '');
+    setEditMaxGuests(property.maxGuests?.toString() || '');
+    setEditPetsAllowed(property.petsAllowed || false);
+    setEditModalVisible(true);
+  };
+
+  // NEW: Save Edits
+  const handleSaveEdit = () => {
+    if (!editName.trim()) {
+      Alert.alert('Validation Error', 'Property Name is required.');
+      return;
+    }
+    try {
+      updateProperty(
+        propertyId, editName, editIsAirbnb, editAddress, editDescription,
+        parseInt(editRoomsCount) || 0, parseInt(editMaxGuests) || 1, editPetsAllowed
+      );
+      setEditModalVisible(false);
+      loadData(); // Refresh UI instantly
+    } catch (error) {
+      Alert.alert('Error', 'Could not update property details.');
+    }
+  };
+
+  // NEW: Delete Property Sequence
+  const handleDeleteProperty = () => {
+    Alert.alert(
+      'Delete Property', 
+      `Are you sure you want to permanently delete "${property?.name}"? This will also wipe all linked photos and stays.`, 
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive', 
+          onPress: () => {
+            deleteProperty(propertyId);
+            router.replace('/(tabs)'); // Boot user back to the hub
+          }
+        }
+      ]
+    );
   };
 
   const handleAddPhotos = async () => {
@@ -71,14 +126,14 @@ export default function PropertyDetailsScreen() {
     } catch (error) { Alert.alert('Error', 'Failed to save the images.'); }
   };
 
-  const handleSetMain = (mediaId: string) => { // Updated to string
+  const handleSetMain = (mediaId: string) => {
     Alert.alert('Set Main Image', 'Use this photo as the cover for this property?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Set as Cover', onPress: () => { setMainImage(propertyId, mediaId); loadData(); }}
     ]);
   };
 
-  const handleDeletePhoto = (mediaId: string, uri: string) => { // Updated to string
+  const handleDeletePhoto = (mediaId: string, uri: string) => {
     Alert.alert('Delete Photo', 'Remove this image?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
@@ -90,7 +145,7 @@ export default function PropertyDetailsScreen() {
     ]);
   };
 
- const handleCloudShare = async () => {
+  const handleCloudShare = async () => {
     if (mediaList.length === 0) {
       await uploadDossierText(property!, null, []);
       const webUrl = `https://agent-aide-web.vercel.app/property/${propertyId}`;
@@ -105,10 +160,8 @@ export default function PropertyDetailsScreen() {
 
       for (const media of mediaList) {
         const galleryUrl = await uploadToCloud(media.uri, propertyId, false);
-        
         if (galleryUrl) {
           validUrls.push(galleryUrl);
-          
           if (media.isMain) {
             coverUrl = await uploadToCloud(media.uri, propertyId, true);
           }
@@ -125,7 +178,14 @@ export default function PropertyDetailsScreen() {
       await sharePropertyText(property!, webUrl);
 
     } catch (error) {
-      Alert.alert('Cloud Sync Failed', 'Could not synchronize data with the cloud.');
+      Alert.alert(
+        'Cloud Sync Failed', 
+        'Could not synchronize data with the cloud.', 
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Share Text Only', onPress: () => sharePropertyText(property!) }
+        ]
+      );
     } finally {
       setIsUploading(false);
     }
@@ -136,15 +196,23 @@ export default function PropertyDetailsScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.surface }]} edges={['top', 'left', 'right']}>
+      
+      {/* UPGRADED HEADER: Back, Title, Edit, Delete */}
       <View style={[styles.header, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerIconButton}>
           <Ionicons name="arrow-back" size={24} color={theme.text} />
         </TouchableOpacity>
+        
         <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{property.name}</Text>
         
-        <TouchableOpacity onPress={() => sharePropertyText(property)} style={styles.headerIconButton}>
-          <Ionicons name="share-outline" size={24} color={theme.text} />
-        </TouchableOpacity>
+        <View style={styles.headerRightControls}>
+          <TouchableOpacity onPress={openEditModal} style={styles.headerSmallButton}>
+            <Ionicons name="pencil" size={20} color={theme.text} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleDeleteProperty} style={styles.headerSmallButton}>
+            <Ionicons name="trash-outline" size={20} color={theme.danger} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} style={{ backgroundColor: theme.background }}>
@@ -186,10 +254,7 @@ export default function PropertyDetailsScreen() {
         </View>
 
         <TouchableOpacity 
-          style={[
-            styles.cloudShareButton, 
-            { backgroundColor: isUploading ? theme.border : '#25D366' } 
-          ]} 
+          style={[styles.cloudShareButton, { backgroundColor: isUploading ? theme.border : '#25D366' }]} 
           onPress={handleCloudShare}
           disabled={isUploading}
         >
@@ -235,14 +300,14 @@ export default function PropertyDetailsScreen() {
           </View>
         </View>
 
-        {property.address && (
+        {property.address ? (
           <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
             <Text style={[styles.sectionHeading, { color: theme.text }]}>Physical Location</Text>
             <Text style={[styles.addressBody, { color: theme.subText }]}>
               <Ionicons name="location-outline" size={16} color={theme.subText} /> {property.address}
             </Text>
           </View>
-        )}
+        ) : null}
 
         <View style={[styles.sectionCard, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
           <Text style={[styles.sectionHeading, { color: theme.text }]}>Asset Description</Text>
@@ -266,7 +331,59 @@ export default function PropertyDetailsScreen() {
           ))}
           {stays.length === 0 && <Text style={[styles.emptyStaysText, { color: theme.subText }]}>Zero stays linked with this property reference asset.</Text>}
         </View>
+
       </ScrollView>
+
+      {/* NEW: Edit Property Modal */}
+      <Modal visible={isEditModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Details</Text>
+              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+                <Ionicons name="close" size={28} color={theme.subText} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.label, { color: theme.text }]}>Property Name *</Text>
+              <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} value={editName} onChangeText={setEditName} />
+
+              <Text style={[styles.label, { color: theme.text }]}>Address</Text>
+              <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} value={editAddress} onChangeText={setEditAddress} />
+
+              <Text style={[styles.label, { color: theme.text }]}>Description</Text>
+              <TextInput style={[styles.input, styles.textArea, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} multiline numberOfLines={3} value={editDescription} onChangeText={setEditDescription} />
+
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={[styles.label, { color: theme.text }]}>Rooms</Text>
+                  <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} keyboardType="numeric" value={editRoomsCount} onChangeText={setEditRoomsCount} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.label, { color: theme.text }]}>Max Guests</Text>
+                  <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} keyboardType="numeric" value={editMaxGuests} onChangeText={setEditMaxGuests} />
+                </View>
+              </View>
+
+              <View style={styles.switchRow}>
+                <Text style={[styles.switchLabel, { color: theme.text }]}>Allow Pets?</Text>
+                <Switch value={editPetsAllowed} onValueChange={setEditPetsAllowed} trackColor={{ false: theme.border, true: theme.success }} />
+              </View>
+
+              <View style={styles.switchRow}>
+                <Text style={[styles.switchLabel, { color: theme.text }]}>List as Airbnb?</Text>
+                <Switch value={editIsAirbnb} onValueChange={setEditIsAirbnb} trackColor={{ false: theme.border, true: theme.danger }} />
+              </View>
+
+              <TouchableOpacity style={[styles.saveButton, { backgroundColor: theme.primary }]} onPress={handleSaveEdit}>
+                <Text style={styles.saveButtonText}>Save Changes</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -276,6 +393,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, height: 56, borderBottomWidth: 1 },
   headerIconButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700', flex: 1, textAlign: 'center' },
+  headerRightControls: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerSmallButton: { padding: 8 },
   scrollContent: { padding: 16 },
   mediaSection: { marginBottom: 16 },
   mediaHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
@@ -305,5 +424,20 @@ const styles = StyleSheet.create({
   stayLogDate: { fontSize: 14, fontWeight: '600' },
   stayLogCount: { fontSize: 13, fontWeight: '500' },
   stayLogSubText: { fontSize: 12 },
-  emptyStaysText: { fontSize: 13, fontStyle: 'italic' }
+  emptyStaysText: { fontSize: 13, fontStyle: 'italic' },
+  
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalTitle: { fontSize: 20, fontWeight: '700' },
+  formScroll: { marginBottom: 20 },
+  label: { fontSize: 14, fontWeight: '600', marginBottom: 6 },
+  input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 14 },
+  textArea: { minHeight: 70, textAlignVertical: 'top' },
+  rowInputs: { flexDirection: 'row' },
+  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  switchLabel: { fontSize: 15, fontWeight: '500' },
+  saveButton: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' }
 });

@@ -1,11 +1,6 @@
 import * as Crypto from 'expo-crypto';
-import { Stay } from '../types';
+import { StayWithProperty } from '../types';
 import { db } from './init';
-
-export interface StayWithProperty extends Stay {
-  propertyName: string;
-  mainImageUri?: string;
-}
 
 export function getStays(): StayWithProperty[] {
   try {
@@ -33,7 +28,7 @@ export function addStay(
   flightInfo: string
 ): string {
   try {
-    const id = Crypto.randomUUID(); // FIX: Generate a proper UUID
+    const id = Crypto.randomUUID(); 
     db.runSync(
       `INSERT INTO stays (id, propertyId, guestCount, kidsCount, petsCount, specialRequests, arrivalDate, departureDate, flightInfo) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,

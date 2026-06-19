@@ -10,27 +10,33 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import HeroHeader from '../../components/HeroHeader';
 import { getProperties } from '../../database/propertyQueries';
-import { addStay, deleteStay, getStays, StayWithProperty } from '../../database/staysQueries';
+import { addStay, deleteStay, getStays } from '../../database/staysQueries';
 import { Colors } from '../../theme/colors';
-import { Property } from '../../types';
+import { Property, Stay } from '../../types';
 import { parseTicketText } from '../../utils/ticketParser';
 import { shareStayToClient, shareStayToDriver } from '../../utils/whatsappFormatter';
+
+// 🚨 FAIL-SAFE: Defined locally to instantly bypass the 'never' import bug
+interface LocalStayWithProperty extends Stay {
+  propertyName: string;
+  mainImageUri?: string;
+}
 
 export default function StaysScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = Colors[isDark ? 'dark' : 'light'];
 
-  const [stays, setStays] = useState<StayWithProperty[]>([]);
+  // 🚨 Forced local type
+  const [stays, setStays] = useState<LocalStayWithProperty[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
   
   const [isModalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<'options' | 'form'>('options');
+  const [isPropertyModalVisible, setPropertyModalVisible] = useState(false);
   
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [flightInfo, setFlightInfo] = useState('');
-  
-  // UPDATED: Discrete manual fields
   const [arrivalDate, setArrivalDate] = useState('');
   const [arrivalTime, setArrivalTime] = useState('');
   const [departureDate, setDepartureDate] = useState('');
@@ -39,8 +45,9 @@ export default function StaysScreen() {
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
   const loadData = () => {
-    setStays(getStays());
-    setProperties(getProperties());
+    // 🚨 Forced cast to guarantee TS reads the array correctly
+    setStays((getStays() as unknown) as LocalStayWithProperty[] || []);
+    setProperties(getProperties() || []);
   };
 
   const openModal = () => {
@@ -81,7 +88,6 @@ export default function StaysScreen() {
       return;
     }
     try {
-      // Combine date and time cleanly
       const finalArrival = arrivalTime ? `${arrivalDate} at ${arrivalTime}` : arrivalDate;
       const finalDeparture = departureDate || 'TBD';
 
@@ -100,7 +106,11 @@ export default function StaysScreen() {
     ]);
   };
 
-  const renderStayCard = ({ item }: { item: StayWithProperty }) => (
+  const getSelectedProperty = () => {
+    return properties.find(p => p.id === selectedPropertyId);
+  };
+
+  const renderStayCard = ({ item }: { item: LocalStayWithProperty }) => (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
       {item.mainImageUri ? (
         <Image source={{ uri: item.mainImageUri }} style={styles.cardBanner} />
@@ -209,28 +219,24 @@ export default function StaysScreen() {
 
               {modalMode === 'form' && (
                 <ScrollView showsVerticalScrollIndicator={false} style={{ marginBottom: 20 }}>
-                  <Text style={[styles.label, { color: theme.text }]}>Select Property *</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.propertyScroll}>
-                    {properties.map(prop => (
-                      <TouchableOpacity 
-                        key={prop.id} 
-                        style={[
-                          styles.propertyPill, 
-                          { backgroundColor: theme.background, borderColor: theme.border },
-                          selectedPropertyId === prop.id && { backgroundColor: theme.primary + '20', borderColor: theme.primary }
-                        ]}
-                        onPress={() => setSelectedPropertyId(prop.id)}
-                      >
-                        <Text style={[
-                          styles.propertyPillText, 
-                          { color: theme.subText },
-                          selectedPropertyId === prop.id && { color: theme.primary, fontWeight: '700' }
-                        ]}>{prop.name}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+                  
+                  <Text style={[styles.label, { color: theme.text }]}>Linked Property *</Text>
+                  <TouchableOpacity 
+                    style={[styles.propertySelectTrigger, { backgroundColor: theme.background, borderColor: theme.border }]}
+                    onPress={() => setPropertyModalVisible(true)}
+                  >
+                    {selectedPropertyId ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Ionicons name="home" size={18} color={theme.primary} style={{ marginRight: 8 }} />
+                        <Text style={[styles.propertySelectText, { color: theme.text, fontWeight: '600' }]}>{getSelectedProperty()?.name}</Text>
+                      </View>
+                    ) : (
+                      <Text style={[styles.propertySelectText, { color: theme.subText }]}>Tap to select a property...</Text>
+                    )}
+                    <Ionicons name="chevron-down" size={20} color={theme.subText} />
+                  </TouchableOpacity>
 
-                  <Text style={[styles.label, { color: theme.text }]}>Flight Number</Text>
+                  <Text style={[styles.label, { color: theme.text, marginTop: 12 }]}>Flight Number</Text>
                   <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} value={flightInfo} onChangeText={setFlightInfo} placeholder="e.g. DL 1234" />
 
                   <View style={styles.rowInputs}>
@@ -264,6 +270,54 @@ export default function StaysScreen() {
           </View>
         </Modal>
 
+        <Modal visible={isPropertyModalVisible} animationType="fade" transparent={true}>
+          <View style={styles.modalOverlaySecondary}>
+            <View style={[styles.modalContentSecondary, { backgroundColor: theme.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>Select Property</Text>
+                <TouchableOpacity onPress={() => setPropertyModalVisible(false)}>
+                  <Ionicons name="close" size={24} color={theme.subText} />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {properties.map(prop => (
+                  <TouchableOpacity 
+                    key={prop.id}
+                    style={[
+                      styles.propertyListItem, 
+                      { borderBottomColor: theme.border },
+                      selectedPropertyId === prop.id && { backgroundColor: theme.primary + '10' }
+                    ]}
+                    onPress={() => {
+                      setSelectedPropertyId(prop.id);
+                      setPropertyModalVisible(false);
+                    }}
+                  >
+                    {prop.mainImageUri ? (
+                      <Image source={{ uri: prop.mainImageUri }} style={styles.propertyListThumb} />
+                    ) : (
+                      <View style={[styles.propertyListThumb, { backgroundColor: theme.border, alignItems: 'center', justifyContent: 'center' }]}>
+                        <Ionicons name="home" size={20} color={theme.subText} />
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.propertyListTitle, { color: theme.text }]}>{prop.name}</Text>
+                      {prop.address ? <Text style={{ color: theme.subText, fontSize: 12 }}>{prop.address}</Text> : null}
+                    </View>
+                    {selectedPropertyId === prop.id && (
+                      <Ionicons name="checkmark-circle" size={24} color={theme.primary} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+                {properties.length === 0 && (
+                  <Text style={{ textAlign: 'center', color: theme.subText, padding: 20 }}>No properties available.</Text>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
       </View>
     </SafeAreaView>
   );
@@ -291,6 +345,7 @@ const styles = StyleSheet.create({
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 60 },
   emptyStateText: { fontSize: 18, fontWeight: '600', marginTop: 16 },
   fab: { position: 'absolute', bottom: 100, right: 24, width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', elevation: 5 }, 
+  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
@@ -304,9 +359,14 @@ const styles = StyleSheet.create({
   label: { fontSize: 14, fontWeight: '600', marginBottom: 8 },
   input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 20 },
   rowInputs: { flexDirection: 'row', justifyContent: 'space-between' },
-  propertyScroll: { marginBottom: 20, maxHeight: 50 },
-  propertyPill: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, marginRight: 8, alignSelf: 'flex-start' },
-  propertyPillText: { fontSize: 14, fontWeight: '500' },
   saveButton: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
   saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+
+  propertySelectTrigger: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderRadius: 8, padding: 16, marginBottom: 20 },
+  propertySelectText: { fontSize: 16 },
+  modalOverlaySecondary: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'center', padding: 20 },
+  modalContentSecondary: { borderRadius: 20, padding: 20, maxHeight: '70%' },
+  propertyListItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
+  propertyListThumb: { width: 50, height: 50, borderRadius: 8, marginRight: 12, resizeMode: 'cover' },
+  propertyListTitle: { fontSize: 16, fontWeight: '600', marginBottom: 2 }
 });
