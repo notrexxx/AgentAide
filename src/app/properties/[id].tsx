@@ -4,16 +4,16 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useColorScheme,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useColorScheme,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -23,8 +23,8 @@ import { Colors } from '../../theme/colors';
 import { Property, PropertyMedia, Stay } from '../../types';
 import { shareLocalPhoto, sharePropertyText } from '../../utils/whatsappFormatter';
 
-// NEW: Import our Supabase Cloud Bridge
-import { uploadToCloud } from '../../utils/cloudSync';
+// IMPORT RESTORED: Both cloud functions are correctly imported here
+import { uploadDossierText, uploadToCloud } from '../../utils/cloudSync';
 
 const { width } = Dimensions.get('window');
 
@@ -40,7 +40,6 @@ export default function PropertyDetailsScreen() {
   const [stays, setStays] = useState<Stay[]>([]);
   const [mediaList, setMediaList] = useState<PropertyMedia[]>([]);
   
-  // NEW: State to manage the visual loading spinner during upload
   const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => { if (propertyId) loadData(); }, [propertyId]);
@@ -92,33 +91,27 @@ export default function PropertyDetailsScreen() {
     ]);
   };
 
-  // NEW: The Cloud Dossier Generation Engine
   const handleCloudShare = async () => {
-    // Attempt to grab the starred main image, fallback to the first image in the gallery
     const coverImage = mediaList.find(m => m.isMain) || mediaList[0];
     
-    // If no images exist locally, just share the standard text dossier gracefully
-    if (!coverImage) {
-      await sharePropertyText(property!);
-      return;
-    }
-
     try {
       setIsUploading(true);
-      
-      // Upload the local image to the Supabase bucket and wait for the public URL
-      const cloudUrl = await uploadToCloud(coverImage.uri, propertyId);
-      
-      if (cloudUrl) {
-        // Fire the deep link with the live internet URL attached
-        await sharePropertyText(property!, cloudUrl);
-      } else {
-        throw new Error('Supabase returned a null URL.');
+      let cloudUrl = null;
+
+      if (coverImage) {
+        cloudUrl = await uploadToCloud(coverImage.uri, propertyId);
       }
+      
+      await uploadDossierText(property!, cloudUrl);
+      
+      const webUrl = `https://agentaide-web.vercel.app/property/${propertyId}`;
+      
+      await sharePropertyText(property!, webUrl);
+
     } catch (error) {
       Alert.alert(
         'Cloud Sync Failed', 
-        'Could not synchronize the image with the cloud bucket. Sharing offline text dossier instead.', 
+        'Could not synchronize data with the cloud. Sharing offline text dossier instead.', 
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Share Text Only', onPress: () => sharePropertyText(property!) }
@@ -140,7 +133,6 @@ export default function PropertyDetailsScreen() {
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>{property.name}</Text>
         
-        {/* We keep the simple text-share in the header for quick, data-free sharing */}
         <TouchableOpacity onPress={() => sharePropertyText(property)} style={styles.headerIconButton}>
           <Ionicons name="share-outline" size={24} color={theme.text} />
         </TouchableOpacity>
@@ -184,11 +176,10 @@ export default function PropertyDetailsScreen() {
           )}
         </View>
 
-        {/* NEW: The Premium Cloud Dossier WhatsApp Button */}
         <TouchableOpacity 
           style={[
             styles.cloudShareButton, 
-            { backgroundColor: isUploading ? theme.border : '#25D366' } // Brand WhatsApp Green
+            { backgroundColor: isUploading ? theme.border : '#25D366' } 
           ]} 
           onPress={handleCloudShare}
           disabled={isUploading}
@@ -286,11 +277,8 @@ const styles = StyleSheet.create({
   actionOverlay: { position: 'absolute', padding: 8, borderRadius: 20, elevation: 3 },
   mediaContainer: { height: 160, borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderStyle: 'dashed', borderWidth: 2 },
   mediaPlaceholderText: { fontSize: 13, marginTop: 8, fontWeight: '500' },
-  
-  // NEW: Styles for the Cloud Upload Action Button
   cloudShareButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, marginBottom: 20, elevation: 2, gap: 8 },
   cloudShareButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  
   statusRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
   statusText: { fontSize: 13, fontWeight: '700' },
