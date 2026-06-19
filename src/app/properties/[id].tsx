@@ -90,9 +90,10 @@ export default function PropertyDetailsScreen() {
   };
 
   const handleCloudShare = async () => {
+    // If there are no photos, we just share the text and the live Vercel link
     if (mediaList.length === 0) {
       await uploadDossierText(property!, null, []);
-      const webUrl = `https://agentaide-web.vercel.app/property/${propertyId}`;
+      const webUrl = `https://agent-aide-web.vercel.app/property/${propertyId}`;
       await sharePropertyText(property!, webUrl);
       return;
     }
@@ -118,10 +119,11 @@ export default function PropertyDetailsScreen() {
         coverUrl = validUrls[0];
       }
       
-      // Upload text + all image URLs
+      // Upload text + all image URLs to Supabase
       await uploadDossierText(property!, coverUrl, validUrls);
       
-      const webUrl = `https://agentaide-web.vercel.app/property/${propertyId}`;
+      // Generate the live Next.js Vercel link and hand it to WhatsApp!
+      const webUrl = `https://agent-aide-web.vercel.app/property/${propertyId}`;
       await sharePropertyText(property!, webUrl);
 
     } catch (error) {
