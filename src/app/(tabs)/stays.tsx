@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
-  Alert, FlatList, Image, Modal,
+  ActivityIndicator, Alert, FlatList, Image, Modal,
   Platform,
   ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, useColorScheme, View
@@ -13,10 +14,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import HeroHeader from '../../components/HeroHeader';
 import { getProperties } from '../../database/propertyQueries';
-// 🚨 NEW IMPORT: updateStay included
 import { addStay, deleteStay, getStays, updateStay } from '../../database/staysQueries';
 import { Colors } from '../../theme/colors';
 import { Property, Stay } from '../../types';
+import { processImageForOCR } from '../../utils/ocrService';
 import { parseTicketText } from '../../utils/ticketParser';
 import { shareStayToClient, shareStayToDriver } from '../../utils/whatsappFormatter';
 
@@ -37,9 +38,8 @@ export default function StaysScreen() {
   const [modalMode, setModalMode] = useState<'options' | 'form'>('options');
   const [isPropertyModalVisible, setPropertyModalVisible] = useState(false);
   const [activeStayDetails, setActiveStayDetails] = useState<LocalStayWithProperty | null>(null);
-  
-  // 🚨 NEW: Track if we are editing an existing stay
   const [editingStayId, setEditingStayId] = useState<string | null>(null);
+  const [isProcessingOCR, setIsProcessingOCR] = useState(false);
 
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [flightInfo, setFlightInfo] = useState('');
@@ -77,7 +77,6 @@ export default function StaysScreen() {
     setModalVisible(true);
   };
 
-  // 🚨 NEW: Populate the edit form and open it
   const handleEditStay = (stay: LocalStayWithProperty) => {
     setEditingStayId(stay.id);
     setSelectedPropertyId(stay.propertyId);
@@ -85,47 +84,111 @@ export default function StaysScreen() {
     setGuestCount(stay.guestCount.toString());
     setSpecialRequests(stay.specialRequests || '');
 
-    // Safely parse existing string dates back to JS Date Objects for the Native Pickers
     const arrParts = stay.arrivalDate.split(' at ');
-    const pArrDate = new Date(arrParts[0]);
-    if (!isNaN(pArrDate.getTime())) setArrivalDateObj(pArrDate);
+    
+    if (arrParts[0]) {
+      const dateParts = arrParts[0].split('/');
+      if (dateParts.length === 3) {
+        const d = new Date(parseInt(dateParts[2], 10), parseInt(dateParts[0], 10) - 1, parseInt(dateParts[1], 10));
+        if (!isNaN(d.getTime())) setArrivalDateObj(d);
+      }
+    }
 
     if (arrParts[1]) {
-      const pTime = new Date(`${arrParts[0]} ${arrParts[1]}`);
-      if (!isNaN(pTime.getTime())) setArrivalTimeObj(pTime);
+      const tDate = new Date();
+      const timeParts = arrParts[1].match(/(\d+):(\d+)\s*(AM|PM)?/i);
+      if (timeParts) {
+        let hr = parseInt(timeParts[1], 10);
+        const min = parseInt(timeParts[2], 10);
+        const ampm = timeParts[3]?.toUpperCase();
+        if (ampm === 'PM' && hr < 12) hr += 12;
+        if (ampm === 'AM' && hr === 12) hr = 0;
+        tDate.setHours(hr, min, 0, 0);
+        setArrivalTimeObj(tDate);
+      }
     } else {
       setArrivalTimeObj(new Date());
     }
 
     if (stay.departureDate && stay.departureDate !== 'TBD') {
-      const pDep = new Date(stay.departureDate);
-      if (!isNaN(pDep.getTime())) setDepartureDateObj(pDep);
+      const depParts = stay.departureDate.split('/');
+      if (depParts.length === 3) {
+        const d = new Date(parseInt(depParts[2], 10), parseInt(depParts[0], 10) - 1, parseInt(depParts[1], 10));
+        if (!isNaN(d.getTime())) setDepartureDateObj(d);
+      }
     } else {
       setDepartureDateObj(new Date());
     }
 
-    setActiveStayDetails(null); // Close the info modal
+    setActiveStayDetails(null);
     setModalMode('form');
     setModalVisible(true);
+  };
+
+  const applyParsedData = (parsedData: any) => {
+    setFlightInfo(parsedData.flightInfo);
+    
+    if (parsedData.arrivalDate) {
+      const parts = parsedData.arrivalDate.split('/');
+      if (parts.length === 3) {
+        const m = parseInt(parts[0], 10) - 1;
+        const d = parseInt(parts[1], 10);
+        const y = parseInt(parts[2], 10);
+        const pDate = new Date(y, m, d);
+        if (!isNaN(pDate.getTime())) setArrivalDateObj(pDate);
+      }
+    }
+    
+    if (parsedData.arrivalTime) {
+      const [hr, min] = parsedData.arrivalTime.split(':');
+      const tDate = new Date();
+      tDate.setHours(parseInt(hr, 10), parseInt(min, 10), 0, 0);
+      setArrivalTimeObj(tDate);
+    }
+
+    setGuestCount(parsedData.guestCount.toString());
+    setModalMode('form');
+  };
+
+  const handleScanDocument = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], 
+        allowsEditing: true, 
+        quality: 1,
+      });
+
+      if (result.canceled || !result.assets[0]) return;
+
+      setIsProcessingOCR(true);
+      const extractedText = await processImageForOCR(result.assets[0].uri);
+
+      if (!extractedText) {
+         Alert.alert('Scan Failed', 'Could not extract text. Please enter manually.');
+         return;
+      }
+
+      const parsedData = parseTicketText(extractedText);
+      applyParsedData(parsedData);
+
+    } catch (error: any) {
+      Alert.alert('OCR Error', error.message || 'An error occurred while scanning.');
+    } finally {
+      setIsProcessingOCR(false);
+    }
   };
 
   const handlePasteTicket = async () => {
     try {
       const clipboardContent = await Clipboard.getStringAsync();
       if (!clipboardContent) {
-        Alert.alert('Empty Clipboard', 'Please copy the ticket text before pressing this button.');
+        Alert.alert('Empty Clipboard', 'Please copy text first.');
         return;
       }
       const parsedData = parseTicketText(clipboardContent);
-      setFlightInfo(parsedData.flightInfo);
-      if (parsedData.arrivalDate) {
-        const pDate = new Date(parsedData.arrivalDate);
-        if (!isNaN(pDate.getTime())) setArrivalDateObj(pDate);
-      }
-      setGuestCount(parsedData.guestCount.toString());
-      setModalMode('form');
+      applyParsedData(parsedData);
     } catch (error) {
-      Alert.alert('Parsing Error', 'An error occurred while reading the clipboard.');
+      Alert.alert('Parsing Error', 'An error occurred reading the clipboard.');
     }
   };
 
@@ -138,7 +201,6 @@ export default function StaysScreen() {
       const finalArrival = `${formatDate(arrivalDateObj)} at ${formatTime(arrivalTimeObj)}`;
       const finalDeparture = formatDate(departureDateObj);
 
-      // 🚨 UPDATED LOGIC: Edit vs Add
       if (editingStayId) {
         updateStay(editingStayId, selectedPropertyId, parseInt(guestCount) || 1, 0, 0, specialRequests, finalArrival, finalDeparture, flightInfo);
       } else {
@@ -206,7 +268,7 @@ export default function StaysScreen() {
           renderItem={renderStayCard}
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
-            <HeroHeader title="Active Stays" subtitle="Track guest check-ins, flight schedules, and coordinate partner dispatches." iconName="calendar-outline" statLabel="Current Active Stays" statValue={stays.length} />
+            <HeroHeader title="Active Stays" subtitle="" iconName="calendar-outline" statLabel="Current Active Stays" statValue={stays.length} />
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
@@ -244,13 +306,21 @@ export default function StaysScreen() {
                     <Ionicons name="chevron-forward" size={20} color={theme.subText} />
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={[styles.actionButton, { backgroundColor: theme.background, borderColor: theme.border }]} onPress={() => Alert.alert('Coming Soon', 'OCR in v1.1.0')}>
-                    <View style={[styles.iconCircle, { backgroundColor: 'rgba(236, 72, 153, 0.1)' }]}><Ionicons name="scan-outline" size={24} color="#EC4899" /></View>
+                  <TouchableOpacity 
+                    style={[styles.actionButton, { backgroundColor: theme.background, borderColor: theme.border }, isProcessingOCR && { opacity: 0.6 }]} 
+                    onPress={handleScanDocument}
+                    disabled={isProcessingOCR}
+                  >
+                    <View style={[styles.iconCircle, { backgroundColor: 'rgba(236, 72, 153, 0.1)' }]}>
+                       {isProcessingOCR ? <ActivityIndicator color="#EC4899" /> : <Ionicons name="scan-outline" size={24} color="#EC4899" />}
+                    </View>
                     <View style={styles.actionTextContainer}>
                       <Text style={[styles.actionTitle, { color: theme.text }]}>Scan Document / Photo</Text>
-                      <Text style={[styles.actionSubtitle, { color: theme.subText }]}>Upload a boarding pass image or PDF.</Text>
+                      <Text style={[styles.actionSubtitle, { color: theme.subText }]}>
+                        {isProcessingOCR ? 'Reading image...' : 'Upload a boarding pass image.'}
+                      </Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={20} color={theme.subText} />
+                    {!isProcessingOCR && <Ionicons name="chevron-forward" size={20} color={theme.subText} />}
                   </TouchableOpacity>
 
                   <TouchableOpacity style={[styles.actionButton, { backgroundColor: theme.background, borderColor: theme.border }]} onPress={() => setModalMode('form')}>
@@ -367,14 +437,11 @@ export default function StaysScreen() {
           </View>
         </Modal>
 
-        {/* DETAILS MODAL */}
         <Modal visible={!!activeStayDetails} animationType="slide" transparent={true}>
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.surface, maxHeight: '95%' }]}>
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: theme.text }]}>Stay Details</Text>
-                
-                {/* 🚨 NEW: Edit & Delete buttons side by side */}
                 <View style={{ flexDirection: 'row', gap: 16 }}>
                   {activeStayDetails && (
                     <>
