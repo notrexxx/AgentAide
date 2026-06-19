@@ -8,12 +8,16 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-export async function compressImage(localUri: string): Promise<string> {
+// UPGRADED: Dynamic compression based on the target destination
+export async function compressImage(localUri: string, isHero: boolean): Promise<string> {
   try {
+    const targetWidth = isHero ? 600 : 1920;
+    const targetCompression = isHero ? 0.4 : 0.9;
+
     const compressedImage = await ImageManipulator.manipulateAsync(
       localUri,
-      [{ resize: { width: 1080 } }], 
-      { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG } 
+      [{ resize: { width: targetWidth } }], 
+      { compress: targetCompression, format: ImageManipulator.SaveFormat.JPEG } 
     );
     return compressedImage.uri;
   } catch (error) {
@@ -22,15 +26,17 @@ export async function compressImage(localUri: string): Promise<string> {
   }
 }
 
-// CHANGED: propertyId is now a string
-export async function uploadToCloud(localUri: string, propertyId: string): Promise<string | null> {
+// UPGRADED: Accepts the isHero flag to separate file names
+export async function uploadToCloud(localUri: string, propertyId: string, isHero: boolean = false): Promise<string | null> {
   try {
-    const optimizedUri = await compressImage(localUri);
+    const optimizedUri = await compressImage(localUri, isHero);
     const base64File = await FileSystem.readAsStringAsync(optimizedUri, {
       encoding: 'base64',
     });
 
-    const fileName = `property_${propertyId}/${Date.now()}_optimized.jpg`;
+    // Tag the filename so we know which is which in the bucket
+    const fileSuffix = isHero ? 'whatsapp_hero' : 'highres_gallery';
+    const fileName = `property_${propertyId}/${Date.now()}_${fileSuffix}.jpg`;
     const binaryData = decodeBase64(base64File);
 
     const { data, error } = await supabase.storage

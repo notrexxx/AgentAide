@@ -6,7 +6,6 @@ import { StyleSheet, useColorScheme } from 'react-native';
 import { Colors } from '../../theme/colors';
 
 export default function TabLayout() {
-  // Detects if the physical device is in Dark or Light mode
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = Colors[isDark ? 'dark' : 'light'];
@@ -17,14 +16,13 @@ export default function TabLayout() {
         headerShown: false,
         tabBarActiveTintColor: theme.primary,
         tabBarInactiveTintColor: theme.subText,
-        // SPRINT v0.8.0: Glassmorphism Implementation
         tabBarStyle: {
-          position: 'absolute', // Allows content to scroll underneath
+          position: 'absolute',
           borderTopWidth: 0,
           elevation: 0,
           height: 85,
           paddingBottom: 25,
-          backgroundColor: 'transparent', // The background is handled by the BlurView below
+          backgroundColor: 'transparent',
         },
         tabBarBackground: () => (
           <BlurView 

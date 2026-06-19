@@ -1,16 +1,12 @@
+import * as Crypto from 'expo-crypto';
 import { Stay } from '../types';
 import { db } from './init';
 
-// FIXED: Restored the relational interface that was accidentally dropped
 export interface StayWithProperty extends Stay {
   propertyName: string;
   mainImageUri?: string;
 }
 
-/**
- * Compiles a list of active guest stays, pulling the parent property name 
- * along with its current primary star/cover photo for display on the dashboard card.
- */
 export function getStays(): StayWithProperty[] {
   try {
     return db.getAllSync<StayWithProperty>(
@@ -18,7 +14,7 @@ export function getStays(): StayWithProperty[] {
        FROM stays s 
        JOIN properties p ON s.propertyId = p.id 
        LEFT JOIN property_media m ON p.id = m.propertyId AND m.isMain = 1 
-       ORDER BY s.id DESC;`
+       ORDER BY s.arrivalDate ASC;`
     );
   } catch (error) {
     console.error('Error fetching stays dashboard data:', error);
@@ -26,11 +22,8 @@ export function getStays(): StayWithProperty[] {
   }
 }
 
-/**
- * Records a parsed incoming itinerary stay instance.
- */
 export function addStay(
-  propertyId: number,
+  propertyId: string,
   guestCount: number,
   kidsCount: number,
   petsCount: number,
@@ -38,12 +31,14 @@ export function addStay(
   arrivalDate: string,
   departureDate: string,
   flightInfo: string
-): number {
+): string {
   try {
-    const result = db.runSync(
-      `INSERT INTO stays (propertyId, guestCount, kidsCount, petsCount, specialRequests, arrivalDate, departureDate, flightInfo) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+    const id = Crypto.randomUUID(); // FIX: Generate a proper UUID
+    db.runSync(
+      `INSERT INTO stays (id, propertyId, guestCount, kidsCount, petsCount, specialRequests, arrivalDate, departureDate, flightInfo) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
+        id,
         propertyId, 
         guestCount, 
         kidsCount, 
@@ -54,17 +49,14 @@ export function addStay(
         flightInfo
       ]
     );
-    return result.lastInsertRowId;
+    return id;
   } catch (error) {
     console.error('Error creating stay row entry:', error);
     throw error;
   }
 }
 
-/**
- * Deletes a guest itinerary entry by its specific database identifier.
- */
-export function deleteStay(id: number): void {
+export function deleteStay(id: string): void {
   try {
     db.runSync('DELETE FROM stays WHERE id = ?;', [id]);
   } catch (error) {

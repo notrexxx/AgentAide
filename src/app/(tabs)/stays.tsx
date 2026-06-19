@@ -3,17 +3,8 @@ import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
-    Alert,
-    FlatList,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    useColorScheme,
-    View
+  Alert, FlatList, Image, Modal, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, useColorScheme, View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -36,9 +27,13 @@ export default function StaysScreen() {
   const [isModalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<'options' | 'form'>('options');
   
-  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [flightInfo, setFlightInfo] = useState('');
+  
+  // UPDATED: Discrete manual fields
   const [arrivalDate, setArrivalDate] = useState('');
+  const [arrivalTime, setArrivalTime] = useState('');
+  const [departureDate, setDepartureDate] = useState('');
   const [guestCount, setGuestCount] = useState('1');
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
@@ -53,8 +48,14 @@ export default function StaysScreen() {
     setSelectedPropertyId(null);
     setFlightInfo('');
     setArrivalDate('');
+    setArrivalTime('');
+    setDepartureDate('');
     setGuestCount('1');
     setModalVisible(true);
+  };
+
+  const openManualForm = () => {
+    setModalMode('form');
   };
 
   const handlePasteTicket = async () => {
@@ -80,7 +81,11 @@ export default function StaysScreen() {
       return;
     }
     try {
-      addStay(selectedPropertyId, parseInt(guestCount) || 1, 0, 0, '', arrivalDate, 'TBD', flightInfo);
+      // Combine date and time cleanly
+      const finalArrival = arrivalTime ? `${arrivalDate} at ${arrivalTime}` : arrivalDate;
+      const finalDeparture = departureDate || 'TBD';
+
+      addStay(selectedPropertyId, parseInt(guestCount) || 1, 0, 0, '', finalArrival, finalDeparture, flightInfo);
       setModalVisible(false);
       loadData();
     } catch (error) {
@@ -88,7 +93,7 @@ export default function StaysScreen() {
     }
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = (id: string) => {
     Alert.alert('Remove Stay', 'Are you sure you want to remove this active stay?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => { deleteStay(id); loadData(); }}
@@ -97,8 +102,6 @@ export default function StaysScreen() {
 
   const renderStayCard = ({ item }: { item: StayWithProperty }) => (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
-      
-      {/* NEW: Edge-to-Edge Image Banner for Stays */}
       {item.mainImageUri ? (
         <Image source={{ uri: item.mainImageUri }} style={styles.cardBanner} />
       ) : (
@@ -107,7 +110,6 @@ export default function StaysScreen() {
         </View>
       )}
 
-      {/* NEW: Padded Card Body */}
       <View style={styles.cardBody}>
         <View style={styles.cardHeader}>
           <Text style={[styles.propertyName, { color: theme.text }]}>{item.propertyName}</Text>
@@ -119,6 +121,12 @@ export default function StaysScreen() {
           <Ionicons name="airplane-outline" size={16} color={theme.subText} />
           <Text style={[styles.infoText, { color: theme.subText }]}> Flight: {item.flightInfo || 'N/A'}  •  Arrival: {item.arrivalDate}</Text>
         </View>
+        {item.departureDate !== 'TBD' && (
+          <View style={styles.row}>
+            <Ionicons name="calendar-outline" size={16} color={theme.subText} />
+            <Text style={[styles.infoText, { color: theme.subText }]}> Departure: {item.departureDate}</Text>
+          </View>
+        )}
         <View style={styles.row}>
           <Ionicons name="people-outline" size={16} color={theme.subText} />
           <Text style={[styles.infoText, { color: theme.subText }]}> Guests: {item.guestCount}</Text>
@@ -130,7 +138,6 @@ export default function StaysScreen() {
               <Ionicons name="logo-whatsapp" size={16} color="#FFFFFF" />
               <Text style={styles.actionButtonText}> Client</Text>
             </TouchableOpacity>
-            
             <TouchableOpacity style={[styles.driverButton, { backgroundColor: theme.background, borderColor: theme.border }]} onPress={() => shareStayToDriver(item)}>
               <Ionicons name="car-outline" size={18} color={theme.text} />
               <Text style={[styles.driverButtonText, { color: theme.text }]}> Driver</Text>
@@ -147,17 +154,11 @@ export default function StaysScreen() {
         
         <FlatList
           data={stays}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item) => item.id}
           renderItem={renderStayCard}
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
-            <HeroHeader 
-              title="Active Stays"
-              subtitle="Track guest check-ins, flight schedules, and coordinate partner dispatches."
-              iconName="calendar-outline"
-              statLabel="Current Active Stays"
-              statValue={stays.length}
-            />
+            <HeroHeader title="Active Stays" subtitle="Track guest check-ins, flight schedules, and coordinate partner dispatches." iconName="calendar-outline" statLabel="Current Active Stays" statValue={stays.length} />
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
@@ -178,18 +179,28 @@ export default function StaysScreen() {
                 <TouchableOpacity onPress={() => modalMode === 'form' ? setModalMode('options') : setModalVisible(false)}>
                   <Ionicons name={modalMode === 'form' ? "arrow-back" : "close"} size={28} color={theme.subText} />
                 </TouchableOpacity>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>{modalMode === 'options' ? 'Import Itinerary' : 'Confirm Details'}</Text>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>{modalMode === 'options' ? 'Import Itinerary' : 'Stay Details'}</Text>
                 <View style={{ width: 28 }} /> 
               </View>
 
               {modalMode === 'options' && (
                 <>
-                  <Text style={[styles.subText, { color: theme.subText }]}>Choose how you want to import the guest's flight data.</Text>
+                  <Text style={[styles.subText, { color: theme.subText }]}>Choose how you want to input the guest's data.</Text>
+                  
                   <TouchableOpacity style={[styles.actionButton, { backgroundColor: theme.background, borderColor: theme.border }]} onPress={handlePasteTicket}>
                     <View style={styles.iconCircle}><Ionicons name="clipboard-outline" size={24} color={theme.primary} /></View>
                     <View style={styles.actionTextContainer}>
-                      <Text style={[styles.actionTitle, { color: theme.text }]}>Paste Ticket Text</Text>
-                      <Text style={[styles.actionSubtitle, { color: theme.subText }]}>Instantly parse dates and guests.</Text>
+                      <Text style={[styles.actionTitle, { color: theme.text }]}>Auto-Parse Clipboard</Text>
+                      <Text style={[styles.actionSubtitle, { color: theme.subText }]}>Extract dates and guests from copied text.</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={theme.subText} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={[styles.actionButton, { backgroundColor: theme.background, borderColor: theme.border }]} onPress={openManualForm}>
+                    <View style={[styles.iconCircle, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}><Ionicons name="create-outline" size={24} color="#10B981" /></View>
+                    <View style={styles.actionTextContainer}>
+                      <Text style={[styles.actionTitle, { color: theme.text }]}>Enter Manually</Text>
+                      <Text style={[styles.actionSubtitle, { color: theme.subText }]}>Type the details in yourself.</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color={theme.subText} />
                   </TouchableOpacity>
@@ -197,7 +208,7 @@ export default function StaysScreen() {
               )}
 
               {modalMode === 'form' && (
-                <View>
+                <ScrollView showsVerticalScrollIndicator={false} style={{ marginBottom: 20 }}>
                   <Text style={[styles.label, { color: theme.text }]}>Select Property *</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.propertyScroll}>
                     {properties.map(prop => (
@@ -225,7 +236,18 @@ export default function StaysScreen() {
                   <View style={styles.rowInputs}>
                     <View style={{ flex: 1, marginRight: 12 }}>
                       <Text style={[styles.label, { color: theme.text }]}>Arrival Date *</Text>
-                      <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} value={arrivalDate} onChangeText={setArrivalDate} />
+                      <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} value={arrivalDate} onChangeText={setArrivalDate} placeholder="MM/DD/YYYY" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.label, { color: theme.text }]}>Arrival Time</Text>
+                      <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} value={arrivalTime} onChangeText={setArrivalTime} placeholder="e.g. 2:00 PM" />
+                    </View>
+                  </View>
+
+                  <View style={styles.rowInputs}>
+                    <View style={{ flex: 1, marginRight: 12 }}>
+                      <Text style={[styles.label, { color: theme.text }]}>Departure Date</Text>
+                      <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} value={departureDate} onChangeText={setDepartureDate} placeholder="MM/DD/YYYY" />
                     </View>
                     <View style={{ flex: 0.5 }}>
                       <Text style={[styles.label, { color: theme.text }]}>Guests</Text>
@@ -236,7 +258,7 @@ export default function StaysScreen() {
                   <TouchableOpacity style={[styles.saveButton, { backgroundColor: theme.primary }]} onPress={handleSaveStay}>
                     <Text style={styles.saveButtonText}>Save Itinerary</Text>
                   </TouchableOpacity>
-                </View>
+                </ScrollView>
               )}
             </View>
           </View>
@@ -251,13 +273,10 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   container: { flex: 1 },
   listContent: { paddingBottom: 120 }, 
-  
-  // NEW: Updated Card styles for Edge-to-Edge Banners
   card: { borderRadius: 16, marginBottom: 16, marginHorizontal: 16, elevation: 3, overflow: 'hidden' },
   cardBanner: { width: '100%', height: 120, resizeMode: 'cover' },
   cardBannerPlaceholder: { width: '100%', height: 120, alignItems: 'center', justifyContent: 'center' },
   cardBody: { padding: 16 },
-
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   propertyName: { fontSize: 18, fontWeight: '700', flex: 1 },
   iconButton: { padding: 4 },
@@ -273,12 +292,12 @@ const styles = StyleSheet.create({
   emptyStateText: { fontSize: 18, fontWeight: '600', marginTop: 16 },
   fab: { position: 'absolute', bottom: 100, right: 24, width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', elevation: 5 }, 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
-  modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: '60%' },
+  modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   modalTitle: { fontSize: 20, fontWeight: '700' },
   subText: { fontSize: 14, marginBottom: 24 },
   actionButton: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 12 },
-  iconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(59, 130, 246, 0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  iconCircle: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
   actionTextContainer: { flex: 1 },
   actionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
   actionSubtitle: { fontSize: 13 },

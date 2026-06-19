@@ -4,35 +4,27 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Image,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  useColorScheme // NEW: Imported to detect dark mode
+  Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Switch, Text,
+  TextInput, TouchableOpacity, View, useColorScheme
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import HeroHeader from '../../components/HeroHeader';
 import { addMedia } from '../../database/mediaQueries';
-import { addProperty, deleteProperty, getProperties } from '../../database/propertyQueries';
-import { Colors } from '../../theme/colors'; // NEW: Imported our color dictionary
+import { addProperty, deleteProperty, getProperties, updateProperty } from '../../database/propertyQueries';
+import { Colors } from '../../theme/colors';
 import { Property } from '../../types';
 
 export default function PropertiesHubScreen() {
-  // NEW: Theme detection engine
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = Colors[isDark ? 'dark' : 'light'];
 
   const [properties, setProperties] = useState<Property[]>([]);
   const [isModalVisible, setModalVisible] = useState(false);
+  
+  // NEW: Track if we are editing an existing property
+  const [editingId, setEditingId] = useState<string | null>(null);
   
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
@@ -41,7 +33,6 @@ export default function PropertiesHubScreen() {
   const [roomsCount, setRoomsCount] = useState('');
   const [maxGuests, setMaxGuests] = useState('');
   const [petsAllowed, setPetsAllowed] = useState(false);
-  
   const [tempPhotos, setTempPhotos] = useState<string[]>([]);
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
@@ -50,21 +41,36 @@ export default function PropertiesHubScreen() {
     setProperties(getProperties());
   };
 
+  const openCreateModal = () => {
+    setEditingId(null);
+    setName(''); setAddress(''); setIsAirbnb(false); setDescription('');
+    setRoomsCount(''); setMaxGuests(''); setPetsAllowed(false); setTempPhotos([]);
+    setModalVisible(true);
+  };
+
+  const openEditModal = (property: Property) => {
+    setEditingId(property.id);
+    setName(property.name);
+    setAddress(property.address || '');
+    setIsAirbnb(property.isAirbnb);
+    setDescription(property.description || '');
+    setRoomsCount(property.roomsCount?.toString() || '');
+    setMaxGuests(property.maxGuests?.toString() || '');
+    setPetsAllowed(property.petsAllowed || false);
+    setTempPhotos([]); // We only handle *new* photos in this array
+    setModalVisible(true);
+  };
+
   const handleAddTempPhoto = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true, 
-        quality: 0.8,
+        mediaTypes: ['images'], allowsMultipleSelection: true, quality: 0.8,
       });
-
       if (!result.canceled && result.assets) {
         const uris = result.assets.map(asset => asset.uri);
         setTempPhotos(prev => [...prev, ...uris]);
       }
-    } catch (error) {
-      Alert.alert('Error', 'Could not open image picker.');
-    }
+    } catch (error) { Alert.alert('Error', 'Could not open image picker.'); }
   };
 
   const removeTempPhoto = (indexToRemove: number) => {
@@ -77,28 +83,36 @@ export default function PropertiesHubScreen() {
       return;
     }
     try {
-      const newPropertyId = addProperty(name, isAirbnb, address, description, parseInt(roomsCount) || 0, parseInt(maxGuests) || 1, petsAllowed);
+      let targetPropertyId = editingId;
 
-      if (tempPhotos.length > 0) {
+      if (editingId) {
+        // UPDATE Existing
+        updateProperty(editingId, name, isAirbnb, address, description, parseInt(roomsCount) || 0, parseInt(maxGuests) || 1, petsAllowed);
+      } else {
+        // INSERT New
+        targetPropertyId = addProperty(name, isAirbnb, address, description, parseInt(roomsCount) || 0, parseInt(maxGuests) || 1, petsAllowed);
+      }
+
+      // Handle any newly added photos (works for both creation and editing)
+      if (tempPhotos.length > 0 && targetPropertyId) {
         for (let i = 0; i < tempPhotos.length; i++) {
           const uri = tempPhotos[i];
-          const fileName = `property_${newPropertyId}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+          const fileName = `property_${targetPropertyId}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
           const permanentUri = `${FileSystem.documentDirectory}${fileName}`;
-          
           await FileSystem.copyAsync({ from: uri, to: permanentUri });
-          addMedia(newPropertyId, permanentUri, 'photo', i === 0);
+          // If it's a new property, make the first photo the main one.
+          addMedia(targetPropertyId, permanentUri, 'photo', (!editingId && i === 0));
         }
       }
       
-      setName(''); setAddress(''); setIsAirbnb(false); setDescription('');
-      setRoomsCount(''); setMaxGuests(''); setPetsAllowed(false); setTempPhotos([]);
-      setModalVisible(false); loadData();
+      setModalVisible(false); 
+      loadData();
     } catch (error) {
       Alert.alert('Database Error', 'Failed to save property.');
     }
   };
 
-  const handleDelete = (id: number, propertyName: string) => {
+  const handleDelete = (id: string, propertyName: string) => {
     Alert.alert('Delete Property', `Delete "${propertyName}"?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => { deleteProperty(id); loadData(); }}
@@ -107,7 +121,6 @@ export default function PropertiesHubScreen() {
 
   const renderPropertyCard = ({ item }: { item: Property }) => (
     <TouchableOpacity 
-      // NEW: Dynamic theme applied to the card background and borders
       style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]} 
       onPress={() => router.push(`/properties/${item.id}` as any)}
       activeOpacity={0.8}
@@ -130,10 +143,18 @@ export default function PropertiesHubScreen() {
             )}
             <Text style={[styles.cardTitle, { color: theme.text }]}>{item.name}</Text>
           </View>
-          <TouchableOpacity onPress={() => handleDelete(item.id, item.name)} style={styles.deleteButton}>
-            <Ionicons name="trash-outline" size={20} color={theme.danger} />
-          </TouchableOpacity>
+          
+          {/* Action Buttons Row */}
+          <View style={styles.actionRow}>
+            <TouchableOpacity onPress={() => openEditModal(item)} style={styles.actionIcon}>
+              <Ionicons name="pencil-outline" size={20} color={theme.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleDelete(item.id, item.name)} style={styles.actionIcon}>
+              <Ionicons name="trash-outline" size={20} color={theme.danger} />
+            </TouchableOpacity>
+          </View>
         </View>
+
         {item.address ? (
           <Text style={[styles.cardAddress, { color: theme.subText }]} numberOfLines={1}>
             <Ionicons name="location-outline" size={14} color={theme.subText} /> {item.address}
@@ -154,7 +175,7 @@ export default function PropertiesHubScreen() {
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <FlatList
           data={properties}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item) => item.id}
           renderItem={renderPropertyCard}
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
@@ -167,7 +188,7 @@ export default function PropertiesHubScreen() {
             </View>
           }
         />
-        <TouchableOpacity style={[styles.fab, { backgroundColor: theme.primary }]} onPress={() => setModalVisible(true)}>
+        <TouchableOpacity style={[styles.fab, { backgroundColor: theme.primary }]} onPress={openCreateModal}>
           <Ionicons name="add" size={30} color="#FFFFFF" />
         </TouchableOpacity>
 
@@ -175,7 +196,9 @@ export default function PropertiesHubScreen() {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: theme.surface }]}>
               <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Create a new property</Text>
+                <Text style={[styles.modalTitle, { color: theme.text }]}>
+                  {editingId ? 'Edit Property' : 'Create Property'}
+                </Text>
                 <TouchableOpacity onPress={() => setModalVisible(false)}>
                   <Ionicons name="close" size={28} color={theme.subText} />
                 </TouchableOpacity>
@@ -207,22 +230,15 @@ export default function PropertiesHubScreen() {
                 <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} placeholder="Full address" value={address} onChangeText={setAddress} />
 
                 <Text style={[styles.label, { color: theme.text }]}>Description</Text>
-                <TextInput 
-                  style={[styles.input, styles.textArea, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} 
-                  placeholderTextColor={theme.subText}
-                  placeholder="Key property details..." 
-                  multiline numberOfLines={3} 
-                  value={description} 
-                  onChangeText={setDescription} 
-                />
+                <TextInput style={[styles.input, styles.textArea, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} placeholder="Key property details..." multiline numberOfLines={3} value={description} onChangeText={setDescription} />
 
                 <View style={styles.rowInputs}>
                   <View style={{ flex: 1, marginRight: 12 }}>
-                    <Text style={[styles.label, { color: theme.text }]}>Rooms Count</Text>
+                    <Text style={[styles.label, { color: theme.text }]}>Rooms</Text>
                     <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} keyboardType="numeric" placeholder="0" value={roomsCount} onChangeText={setRoomsCount} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.label, { color: theme.text }]}>Max Capacity</Text>
+                    <Text style={[styles.label, { color: theme.text }]}>Max Guests</Text>
                     <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} keyboardType="numeric" placeholder="1" value={maxGuests} onChangeText={setMaxGuests} />
                   </View>
                 </View>
@@ -233,12 +249,12 @@ export default function PropertiesHubScreen() {
                 </View>
 
                 <View style={styles.switchRow}>
-                  <Text style={[styles.switchLabel, { color: theme.text }]}>List as Airbnb Instance?</Text>
+                  <Text style={[styles.switchLabel, { color: theme.text }]}>List as Airbnb?</Text>
                   <Switch value={isAirbnb} onValueChange={setIsAirbnb} trackColor={{ false: theme.border, true: theme.danger }} />
                 </View>
 
                 <TouchableOpacity style={[styles.saveButton, { backgroundColor: theme.primary }]} onPress={handleSaveProperty}>
-                  <Text style={styles.saveButtonText}>Create Property</Text>
+                  <Text style={styles.saveButtonText}>{editingId ? 'Save Changes' : 'Create Property'}</Text>
                 </TouchableOpacity>
               </ScrollView>
             </View>
@@ -252,25 +268,22 @@ export default function PropertiesHubScreen() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   container: { flex: 1 },
-  listContent: { paddingBottom: 120 }, // FIXED: Ensures the last card isn't hidden behind the glass tab bar
-  
+  listContent: { paddingBottom: 120 }, 
   card: { borderRadius: 16, marginBottom: 16, marginHorizontal: 16, elevation: 3, overflow: 'hidden' },
   cardBanner: { width: '100%', height: 140, resizeMode: 'cover' },
   cardBannerPlaceholder: { width: '100%', height: 140, alignItems: 'center', justifyContent: 'center' },
   cardBody: { padding: 16 },
-  
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   cardTitle: { fontSize: 18, fontWeight: '700' },
-  deleteButton: { padding: 4 },
+  actionRow: { flexDirection: 'row', gap: 12 },
+  actionIcon: { padding: 4 },
   cardAddress: { fontSize: 14, marginBottom: 12 },
   specsRow: { flexDirection: 'row', gap: 12, padding: 8, borderRadius: 8 },
   specText: { fontSize: 13, fontWeight: '600' },
-  
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 60 },
   emptyStateText: { fontSize: 16, marginTop: 16 },
-  fab: { position: 'absolute', bottom: 100, right: 24, width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', elevation: 5 }, // FIXED: Lifted above the glass tab bar
-  
+  fab: { position: 'absolute', bottom: 100, right: 24, width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', elevation: 5 }, 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },

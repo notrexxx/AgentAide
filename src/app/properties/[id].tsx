@@ -90,7 +90,7 @@ export default function PropertyDetailsScreen() {
     ]);
   };
 
-  const handleCloudShare = async () => {
+ const handleCloudShare = async () => {
     if (mediaList.length === 0) {
       await uploadDossierText(property!, null, []);
       const webUrl = `https://agent-aide-web.vercel.app/property/${propertyId}`;
@@ -104,33 +104,28 @@ export default function PropertyDetailsScreen() {
       let coverUrl: string | null = null;
 
       for (const media of mediaList) {
-        const uploadedUrl = await uploadToCloud(media.uri, propertyId);
-        if (uploadedUrl) {
-          validUrls.push(uploadedUrl);
+        const galleryUrl = await uploadToCloud(media.uri, propertyId, false);
+        
+        if (galleryUrl) {
+          validUrls.push(galleryUrl);
+          
           if (media.isMain) {
-            coverUrl = uploadedUrl;
+            coverUrl = await uploadToCloud(media.uri, propertyId, true);
           }
         }
       }
 
       if (!coverUrl && validUrls.length > 0) {
-        coverUrl = validUrls[0];
+        coverUrl = validUrls[0]; 
       }
       
       await uploadDossierText(property!, coverUrl, validUrls);
       
-      const webUrl = `https://agent-aide-web.vercel.app/property/${propertyId}`;
+      const webUrl = `https://agent-aide-web.vercel.app/property/${propertyId}?v=${Date.now()}`;
       await sharePropertyText(property!, webUrl);
 
     } catch (error) {
-      Alert.alert(
-        'Cloud Sync Failed', 
-        'Could not synchronize data with the cloud. Sharing offline text dossier instead.', 
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Share Text Only', onPress: () => sharePropertyText(property!) }
-        ]
-      );
+      Alert.alert('Cloud Sync Failed', 'Could not synchronize data with the cloud.');
     } finally {
       setIsUploading(false);
     }

@@ -85,3 +85,35 @@ export function getStaysForProperty(propertyId: string): Stay[] {
     return [];
   }
 }
+
+export function updateProperty(
+  id: string,
+  name: string,
+  isAirbnb: boolean,
+  address: string,
+  description: string,
+  roomsCount: number,
+  maxGuests: number,
+  petsAllowed: boolean
+): void {
+  try {
+    db.runSync(
+      `UPDATE properties 
+       SET name = ?, isAirbnb = ?, address = ?, description = ?, roomsCount = ?, maxGuests = ?, petsAllowed = ? 
+       WHERE id = ?;`,
+      [
+        name, 
+        isAirbnb ? 1 : 0, 
+        address, 
+        description, 
+        roomsCount, 
+        maxGuests, 
+        petsAllowed ? 1 : 0,
+        id
+      ]
+    );
+  } catch (error) {
+    console.error('Error updating property asset:', error);
+    throw error;
+  }
+}
