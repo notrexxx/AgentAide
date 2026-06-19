@@ -23,14 +23,12 @@ export default function PropertiesHubScreen() {
   const isDark = colorScheme === 'dark';
   const theme = Colors[isDark ? 'dark' : 'light'];
 
-  // Data & UI States
   const [properties, setProperties] = useState<Property[]>([]);
   const [allStays, setAllStays] = useState<StayWithProperty[]>([]);
   const [isModalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'All' | 'Vacant' | 'Occupied' | 'Reserved'>('All');
   
-  // Form States
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [isAirbnb, setIsAirbnb] = useState(false);
@@ -45,11 +43,7 @@ export default function PropertiesHubScreen() {
     setAllStays((getStays() as StayWithProperty[]) || []);
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => { loadData(); }, []));
 
   const openCreateModal = () => {
     setName(''); setAddress(''); setIsAirbnb(false); setDescription('');
@@ -66,9 +60,7 @@ export default function PropertiesHubScreen() {
         const uris = result.assets.map(asset => asset.uri);
         setTempPhotos(prev => [...prev, ...uris]);
       }
-    } catch (error) { 
-      Alert.alert('Error', 'Could not open image picker.'); 
-    }
+    } catch (error) { Alert.alert('Error', 'Could not open image picker.'); }
   };
 
   const removeTempPhoto = (indexToRemove: number) => {
@@ -81,15 +73,7 @@ export default function PropertiesHubScreen() {
       return;
     }
     try {
-      const newPropertyId = addProperty(
-        name, 
-        isAirbnb, 
-        address, 
-        description, 
-        parseInt(roomsCount) || 0, 
-        parseInt(maxGuests) || 1, 
-        petsAllowed
-      );
+      const newPropertyId = addProperty(name, isAirbnb, address, description, parseInt(roomsCount) || 0, parseInt(maxGuests) || 1, petsAllowed);
 
       if (tempPhotos.length > 0) {
         for (let i = 0; i < tempPhotos.length; i++) {
@@ -100,18 +84,17 @@ export default function PropertiesHubScreen() {
           addMedia(newPropertyId, permanentUri, 'photo', i === 0);
         }
       }
-      setModalVisible(false); 
-      loadData();
+      setModalVisible(false); loadData();
     } catch (error) {
       Alert.alert('Database Error', 'Failed to save property.');
     }
   };
 
+  // 🚨 UPGRADED LOGIC: Calculates dates accurately for the pills
   const getPropertyStatus = useCallback((propertyId: string) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // 🚨 Explicitly asserting type here to bypass 'never' tracking
     const propertyStays = (allStays as StayWithProperty[]).filter(s => s.propertyId === propertyId);
     let isOccupied = false;
     let isReserved = false;
@@ -130,10 +113,12 @@ export default function PropertiesHubScreen() {
         arrDate.setHours(0, 0, 0, 0);
         if (depDate && !isNaN(depDate.getTime())) depDate.setHours(0, 0, 0, 0);
 
+        // If today is exactly between arrival and departure, it is physically Occupied
         if (today.getTime() >= arrDate.getTime() && (!depDate || today.getTime() <= depDate.getTime())) {
           isOccupied = true;
         }
 
+        // If the arrival is strictly in the future, it is Reserved
         if (arrDate.getTime() > today.getTime()) {
           isReserved = true;
           if (!nextStay || arrDate.getTime() < new Date((nextStay as StayWithProperty).arrivalDate.split(' at ')[0]).getTime()) {
@@ -143,22 +128,20 @@ export default function PropertiesHubScreen() {
       }
     });
 
-    return { isOccupied, isReserved, isVacant: !isOccupied, nextStay };
+    // Vacant ONLY if it is neither occupied nor reserved for the future
+    const isVacant = !isOccupied && !isReserved;
+
+    return { isOccupied, isReserved, isVacant, nextStay };
   }, [allStays]);
 
   const filteredProperties = useMemo(() => {
     return properties.filter(property => {
-      const matchesSearch = 
-        property.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (property.address && property.address.toLowerCase().includes(searchQuery.toLowerCase()));
-
+      const matchesSearch = property.name.toLowerCase().includes(searchQuery.toLowerCase()) || (property.address && property.address.toLowerCase().includes(searchQuery.toLowerCase()));
       if (!matchesSearch) return false;
-
       const status = getPropertyStatus(property.id);
       if (activeFilter === 'Vacant') return status.isVacant;
       if (activeFilter === 'Occupied') return status.isOccupied;
       if (activeFilter === 'Reserved') return status.isReserved;
-      
       return true;
     });
   }, [properties, searchQuery, activeFilter, getPropertyStatus]);
@@ -167,50 +150,37 @@ export default function PropertiesHubScreen() {
     const status = getPropertyStatus(item.id);
 
     return (
-      <TouchableOpacity 
-        style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]} 
-        onPress={() => router.push(`/properties/${item.id}` as any)}
-        activeOpacity={0.8}
-      >
+      <TouchableOpacity style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]} onPress={() => router.push(`/properties/${item.id}` as any)} activeOpacity={0.8}>
         {item.mainImageUri ? (
           <Image source={{ uri: item.mainImageUri }} style={styles.cardBanner} />
         ) : (
-          <View style={[styles.cardBannerPlaceholder, { backgroundColor: theme.background }]}>
-            <Ionicons name="image-outline" size={32} color={theme.subText} />
-          </View>
+          <View style={[styles.cardBannerPlaceholder, { backgroundColor: theme.background }]}><Ionicons name="image-outline" size={32} color={theme.subText} /></View>
         )}
 
         <View style={styles.cardBody}>
           <View style={styles.cardHeader}>
             <View style={styles.titleRow}>
-              {item.isAirbnb ? (
-                <FontAwesome5 name="airbnb" size={20} color={theme.danger} />
-              ) : (
-                <Ionicons name="home" size={20} color={theme.primary} />
-              )}
-              <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={1}>
-                {item.name}
-              </Text>
+              {item.isAirbnb ? <FontAwesome5 name="airbnb" size={20} color={theme.danger} /> : <Ionicons name="home" size={20} color={theme.primary} />}
+              <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
             </View>
           </View>
 
+          {/* 🚨 MUTUALLY EXCLUSIVE PILLS */}
           <View style={styles.pillsRow}>
-            {status.isVacant && (
-              <View style={[styles.pill, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
-                <View style={[styles.pillDot, { backgroundColor: '#10B981' }]} />
-                <Text style={[styles.pillText, { color: '#10B981' }]}>Vacant</Text>
-              </View>
-            )}
-            {status.isOccupied && (
+            {status.isOccupied ? (
               <View style={[styles.pill, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
                 <View style={[styles.pillDot, { backgroundColor: '#EF4444' }]} />
                 <Text style={[styles.pillText, { color: '#EF4444' }]}>Occupied</Text>
               </View>
-            )}
-            {status.isReserved && (
+            ) : status.isReserved ? (
               <View style={[styles.pill, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
                 <View style={[styles.pillDot, { backgroundColor: '#3B82F6' }]} />
                 <Text style={[styles.pillText, { color: '#3B82F6' }]}>Reserved</Text>
+              </View>
+            ) : (
+              <View style={[styles.pill, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                <View style={[styles.pillDot, { backgroundColor: '#10B981' }]} />
+                <Text style={[styles.pillText, { color: '#10B981' }]}>Vacant</Text>
               </View>
             )}
           </View>
@@ -225,7 +195,6 @@ export default function PropertiesHubScreen() {
             <View style={[styles.upcomingStayBox, { borderTopColor: theme.border }]}>
               <Ionicons name="calendar" size={14} color={theme.primary} />
               <Text style={[styles.upcomingStayText, { color: theme.subText }]} numberOfLines={1}>
-                {/* 🚨 Forced conversion on render elements to avoid fallback compiler issues */}
                 Next Guest: <Text style={{ fontWeight: '600', color: theme.text }}>{(status.nextStay as StayWithProperty).arrivalDate.split(' at ')[0]}</Text> ({(status.nextStay as StayWithProperty).guestCount} pax)
               </Text>
             </View>
@@ -245,9 +214,10 @@ export default function PropertiesHubScreen() {
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
             <>
+              {/* DROPPED SUBTITLE TO SAVE SPACE */}
               <HeroHeader 
                 title="Properties Hub" 
-                subtitle="Manage your physical real estate portfolio and localized rental instances." 
+                subtitle=""
                 iconName="business-outline" 
                 statLabel="Total Managed Assets" 
                 statValue={properties.length} 
@@ -255,35 +225,16 @@ export default function PropertiesHubScreen() {
               
               <View style={[styles.searchBarContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                 <Ionicons name="search" size={20} color={theme.subText} style={styles.searchIcon} />
-                <TextInput
-                  style={[styles.searchTextInput, { color: theme.text }]}
-                  placeholder="Search by name or address..."
-                  placeholderTextColor={theme.subText}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearchQuery('')}>
-                    <Ionicons name="close-circle" size={18} color={theme.subText} />
-                  </TouchableOpacity>
-                )}
+                <TextInput style={[styles.searchTextInput, { color: theme.text }]} placeholder="Search by name or address..." placeholderTextColor={theme.subText} value={searchQuery} onChangeText={setSearchQuery} />
+                {searchQuery.length > 0 && <TouchableOpacity onPress={() => setSearchQuery('')}><Ionicons name="close-circle" size={18} color={theme.subText} /></TouchableOpacity>}
               </View>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabsScroll} contentContainerStyle={styles.filterTabsContent}>
                 {(['All', 'Vacant', 'Occupied', 'Reserved'] as const).map((filter) => {
                   const isSelected = activeFilter === filter;
                   return (
-                    <TouchableOpacity
-                      key={filter}
-                      onPress={() => setActiveFilter(filter)}
-                      style={[
-                        styles.filterTab, 
-                        { backgroundColor: isSelected ? theme.primary : theme.surface, borderColor: theme.border }
-                      ]}
-                    >
-                      <Text style={[styles.filterTabText, { color: isSelected ? '#FFFFFF' : theme.text }]}>
-                        {filter}
-                      </Text>
+                    <TouchableOpacity key={filter} onPress={() => setActiveFilter(filter)} style={[styles.filterTab, { backgroundColor: isSelected ? theme.primary : theme.surface, borderColor: theme.border }]}>
+                      <Text style={[styles.filterTabText, { color: isSelected ? '#FFFFFF' : theme.text }]}>{filter}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -293,9 +244,7 @@ export default function PropertiesHubScreen() {
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="folder-open-outline" size={48} color={theme.subText} />
-              <Text style={[styles.emptyStateText, { color: theme.subText }]}>
-                {searchQuery || activeFilter !== 'All' ? 'No matching properties found.' : 'No properties found.'}
-              </Text>
+              <Text style={[styles.emptyStateText, { color: theme.subText }]}>{searchQuery || activeFilter !== 'All' ? 'No matching properties found.' : 'No properties found.'}</Text>
             </View>
           }
         />
@@ -332,16 +281,12 @@ export default function PropertiesHubScreen() {
                     ))}
                   </ScrollView>
                 </View>
-
                 <Text style={[styles.label, { color: theme.text }]}>Property Name *</Text>
                 <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} placeholder="e.g., Oceanfront Villa" value={name} onChangeText={setName} />
-
                 <Text style={[styles.label, { color: theme.text }]}>Address</Text>
                 <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} placeholder="Full address" value={address} onChangeText={setAddress} />
-
                 <Text style={[styles.label, { color: theme.text }]}>Description</Text>
                 <TextInput style={[styles.input, styles.textArea, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} placeholder="Key property details..." multiline numberOfLines={3} value={description} onChangeText={setDescription} />
-
                 <View style={styles.rowInputs}>
                   <View style={{ flex: 1, marginRight: 12 }}>
                     <Text style={[styles.label, { color: theme.text }]}>Rooms</Text>
@@ -352,17 +297,14 @@ export default function PropertiesHubScreen() {
                     <TextInput style={[styles.input, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} placeholderTextColor={theme.subText} keyboardType="numeric" placeholder="1" value={maxGuests} onChangeText={setMaxGuests} />
                   </View>
                 </View>
-
                 <View style={styles.switchRow}>
                   <Text style={[styles.switchLabel, { color: theme.text }]}>Allow Pets?</Text>
                   <Switch value={petsAllowed} onValueChange={setPetsAllowed} trackColor={{ false: theme.border, true: theme.success }} />
                 </View>
-
                 <View style={styles.switchRow}>
                   <Text style={[styles.switchLabel, { color: theme.text }]}>List as Airbnb?</Text>
                   <Switch value={isAirbnb} onValueChange={setIsAirbnb} trackColor={{ false: theme.border, true: theme.danger }} />
                 </View>
-
                 <TouchableOpacity style={[styles.saveButton, { backgroundColor: theme.primary }]} onPress={handleSaveProperty}>
                   <Text style={styles.saveButtonText}>Create Property</Text>
                 </TouchableOpacity>
