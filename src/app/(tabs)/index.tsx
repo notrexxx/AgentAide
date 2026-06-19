@@ -18,6 +18,25 @@ import { getStays } from '../../database/staysQueries';
 import { Colors } from '../../theme/colors';
 import { Property, StayWithProperty } from '../../types';
 
+const parseDateSafely = (dateStr: string) => {
+  if (!dateStr) return null;
+  try {
+    const cleanStr = dateStr.split(' at ')[0].trim();
+    const parts = cleanStr.split('/');
+    if (parts.length === 3) {
+      const month = parseInt(parts[0], 10) - 1; 
+      const day = parseInt(parts[1], 10);
+      const year = parseInt(parts[2], 10);
+      const d = new Date(year, month, day);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+};
+
 export default function PropertiesHubScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -26,7 +45,6 @@ export default function PropertiesHubScreen() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [allStays, setAllStays] = useState<StayWithProperty[]>([]);
   const [isModalVisible, setModalVisible] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'All' | 'Vacant' | 'Occupied' | 'Reserved'>('All');
   
   const [name, setName] = useState('');
@@ -100,45 +118,44 @@ export default function PropertiesHubScreen() {
     let nextStay: StayWithProperty | null = null;
 
     propertyStays.forEach((stay: StayWithProperty) => {
-      if (!stay || !stay.arrivalDate) return;
-      
-      const arrStr = stay.arrivalDate.split(' at ')[0];
-      const depStr = stay.departureDate === 'TBD' || !stay.departureDate ? null : stay.departureDate.split(' at ')[0];
-      
-      const arrDate = new Date(arrStr);
-      const depDate = depStr ? new Date(depStr) : null;
+      const arrDate = parseDateSafely(stay.arrivalDate);
+      const depDate = stay.departureDate !== 'TBD' ? parseDateSafely(stay.departureDate) : null;
 
-      if (!isNaN(arrDate.getTime())) {
-        arrDate.setHours(0, 0, 0, 0);
-        if (depDate && !isNaN(depDate.getTime())) depDate.setHours(0, 0, 0, 0);
-
+      if (arrDate) {
         if (today.getTime() >= arrDate.getTime() && (!depDate || today.getTime() <= depDate.getTime())) {
           isOccupied = true;
         }
 
         if (arrDate.getTime() > today.getTime()) {
           isReserved = true;
-          if (!nextStay || arrDate.getTime() < new Date((nextStay as StayWithProperty).arrivalDate.split(' at ')[0]).getTime()) {
+          if (!nextStay) {
             nextStay = stay;
+          } else {
+            const nextArrDate = parseDateSafely(nextStay.arrivalDate);
+            if (nextArrDate && arrDate.getTime() < nextArrDate.getTime()) {
+              nextStay = stay;
+            }
           }
         }
       }
     });
 
-    return { isOccupied, isReserved, isVacant: !isOccupied && !isReserved, nextStay };
+    const isVacant = !isOccupied;
+
+    return { isOccupied, isReserved, isVacant, nextStay };
   }, [allStays]);
 
   const filteredProperties = useMemo(() => {
     return properties.filter(property => {
-      const matchesSearch = property.name.toLowerCase().includes(searchQuery.toLowerCase()) || (property.address && property.address.toLowerCase().includes(searchQuery.toLowerCase()));
-      if (!matchesSearch) return false;
       const status = getPropertyStatus(property.id);
-      if (activeFilter === 'Vacant') return status.isVacant;
-      if (activeFilter === 'Occupied') return status.isOccupied;
-      if (activeFilter === 'Reserved') return status.isReserved;
-      return true;
+      
+      if (activeFilter === 'Vacant' && !status.isVacant) return false;
+      if (activeFilter === 'Occupied' && !status.isOccupied) return false;
+      if (activeFilter === 'Reserved' && !status.isReserved) return false;
+      
+      return true; 
     });
-  }, [properties, searchQuery, activeFilter, getPropertyStatus]);
+  }, [properties, activeFilter, getPropertyStatus]);
 
   const renderPropertyCard = ({ item }: { item: Property }) => {
     const status = getPropertyStatus(item.id);
@@ -212,8 +229,8 @@ export default function PropertiesHubScreen() {
           renderItem={renderPropertyCard}
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={
-            <>
-              {/* 🚨 FIXED: Added subtitle="" to satisfy the HeroHeaderProps */}
+            // 🚨 PERFECTED SPACING WRAPPER
+            <View style={{ paddingBottom: 16 }}> 
               <HeroHeader 
                 title="Properties Hub" 
                 subtitle=""
@@ -222,13 +239,12 @@ export default function PropertiesHubScreen() {
                 statValue={properties.length} 
               />
               
-              <View style={[styles.searchBarContainer, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <Ionicons name="search" size={20} color={theme.subText} style={styles.searchIcon} />
-                <TextInput style={[styles.searchTextInput, { color: theme.text }]} placeholder="Search by name or address..." placeholderTextColor={theme.subText} value={searchQuery} onChangeText={setSearchQuery} />
-                {searchQuery.length > 0 && <TouchableOpacity onPress={() => setSearchQuery('')}><Ionicons name="close-circle" size={18} color={theme.subText} /></TouchableOpacity>}
-              </View>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterTabsScroll} contentContainerStyle={styles.filterTabsContent}>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false} 
+                style={styles.filterTabsScroll} 
+                contentContainerStyle={styles.filterTabsContent}
+              >
                 {(['All', 'Vacant', 'Occupied', 'Reserved'] as const).map((filter) => {
                   const isSelected = activeFilter === filter;
                   return (
@@ -238,12 +254,12 @@ export default function PropertiesHubScreen() {
                   );
                 })}
               </ScrollView>
-            </>
+            </View>
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons name="folder-open-outline" size={48} color={theme.subText} />
-              <Text style={[styles.emptyStateText, { color: theme.subText }]}>{searchQuery || activeFilter !== 'All' ? 'No matching properties found.' : 'No properties found.'}</Text>
+              <Text style={[styles.emptyStateText, { color: theme.subText }]}>{activeFilter !== 'All' ? 'No matching properties found.' : 'No properties found.'}</Text>
             </View>
           }
         />
@@ -327,8 +343,8 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   cardTitle: { fontSize: 18, fontWeight: '700', flex: 1 },
-  pillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  pill: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12 },
+  pillsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 },
+  pill: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, marginRight: 8, marginBottom: 4 }, 
   pillDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
   pillText: { fontSize: 12, fontWeight: '700' },
   specsRow: { flexDirection: 'row', gap: 12, padding: 8, borderRadius: 8 },
@@ -358,11 +374,10 @@ const styles = StyleSheet.create({
   switchLabel: { fontSize: 15, fontWeight: '500' },
   saveButton: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
   saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  searchBarContainer: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 8, paddingHorizontal: 12, height: 46, borderRadius: 12, borderWidth: 1 },
-  searchIcon: { marginRight: 8 },
-  searchTextInput: { flex: 1, fontSize: 15, height: '100%' },
-  filterTabsScroll: { marginTop: 12, marginBottom: 4 },
-  filterTabsContent: { paddingHorizontal: 16, gap: 8, paddingBottom: 8 },
+  
+  // 🚨 EXACT SPACING FOR PILLS TUCKED UNDER HEADER
+  filterTabsScroll: { marginTop: 12 }, 
+  filterTabsContent: { paddingHorizontal: 16, gap: 8 },
   filterTab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   filterTabText: { fontSize: 14, fontWeight: '600' }
 });

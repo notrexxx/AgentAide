@@ -5,7 +5,7 @@ import { Dimensions, StyleSheet, Text, View } from 'react-native';
 interface HeroHeaderProps {
   title: string;
   subtitle: string;
-  // FIXED: Dynamically extracting the exact valid names from the Ionicons component
+  // Dynamically extracting the exact valid names from the Ionicons component
   iconName: React.ComponentProps<typeof Ionicons>['name'];
   statLabel: string;
   statValue: number | string;
@@ -23,10 +23,10 @@ export default function HeroHeader({ title, subtitle, iconName, statLabel, statV
       <View style={styles.contentRow}>
         <View style={styles.textColumn}>
           <Text style={styles.heroTitle}>{title}</Text>
-          <Text style={styles.heroSubtitle}>{subtitle}</Text>
+          {/* 🚨 SPACE SAVER: Only renders if a subtitle actually exists */}
+          {!!subtitle && <Text style={styles.heroSubtitle}>{subtitle}</Text>}
         </View>
         <View style={styles.iconContainer}>
-          {/* FIXED: We no longer need 'as any' because the prop is strictly typed! */}
           <Ionicons name={iconName} size={32} color="rgba(255, 255, 255, 0.15)" />
         </View>
       </View>
@@ -43,13 +43,16 @@ export default function HeroHeader({ title, subtitle, iconName, statLabel, statV
 const styles = StyleSheet.create({
   heroContainer: {
     backgroundColor: '#0F172A',
-    padding: 24,
-    paddingBottom: 28,
+    // 🚨 REDUCED: Padding cut down to compress vertical height
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     overflow: 'hidden',
     position: 'relative',
-    marginBottom: 16,
+    // 🚨 REDUCED: Margin pulled up so the filter tabs sit closer
+    marginBottom: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -78,7 +81,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    // 🚨 REDUCED: Spacing between title and metrics pill
+    marginBottom: 12,
   },
   textColumn: {
     flex: 1,

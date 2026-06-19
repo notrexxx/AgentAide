@@ -19,6 +19,25 @@ import { shareLocalPhoto, sharePropertyText, shareStayToClient } from '../../uti
 
 const { width } = Dimensions.get('window');
 
+const parseDateSafely = (dateStr: string) => {
+  if (!dateStr) return null;
+  try {
+    const cleanStr = dateStr.split(' at ')[0].trim();
+    const parts = cleanStr.split('/');
+    if (parts.length === 3) {
+      const month = parseInt(parts[0], 10) - 1; 
+      const day = parseInt(parts[1], 10);
+      const year = parseInt(parts[2], 10);
+      const d = new Date(year, month, day);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+};
+
 export default function PropertyDetailsScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -42,7 +61,7 @@ export default function PropertyDetailsScreen() {
   const [editRoomsCount, setEditRoomsCount] = useState('');
   const [editMaxGuests, setEditMaxGuests] = useState('');
   const [editPetsAllowed, setEditPetsAllowed] = useState(false);
-  const [tempPhotos, setTempPhotos] = useState<string[]>([]); // For adding new ones in edit mode
+  const [tempPhotos, setTempPhotos] = useState<string[]>([]);
 
   useEffect(() => { if (propertyId) loadData(); }, [propertyId]);
 
@@ -60,17 +79,10 @@ export default function PropertyDetailsScreen() {
     let isReserved = false;
 
     stays.forEach((stay: Stay) => {
-      if (!stay.arrivalDate) return;
-      const arrStr = stay.arrivalDate.split(' at ')[0];
-      const depStr = stay.departureDate === 'TBD' || !stay.departureDate ? null : stay.departureDate.split(' at ')[0];
-      
-      const arrDate = new Date(arrStr);
-      const depDate = depStr ? new Date(depStr) : null;
+      const arrDate = parseDateSafely(stay.arrivalDate);
+      const depDate = stay.departureDate !== 'TBD' ? parseDateSafely(stay.departureDate) : null;
 
-      if (!isNaN(arrDate.getTime())) {
-        arrDate.setHours(0, 0, 0, 0);
-        if (depDate && !isNaN(depDate.getTime())) depDate.setHours(0, 0, 0, 0);
-
+      if (arrDate) {
         if (today.getTime() >= arrDate.getTime() && (!depDate || today.getTime() <= depDate.getTime())) {
           isOccupied = true;
         }
@@ -80,7 +92,7 @@ export default function PropertyDetailsScreen() {
       }
     });
 
-    return { isOccupied, isReserved, isVacant: !isOccupied && !isReserved };
+    return { isOccupied, isReserved, isVacant: !isOccupied };
   }, [stays]);
 
   const openEditModal = () => {
@@ -135,14 +147,12 @@ export default function PropertyDetailsScreen() {
         parseInt(editRoomsCount) || 0, parseInt(editMaxGuests) || 1, editPetsAllowed
       );
 
-      // Process new photos added during edit
       if (tempPhotos.length > 0) {
         for (let i = 0; i < tempPhotos.length; i++) {
           const uri = tempPhotos[i];
           const fileName = `property_${propertyId}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
           const permanentUri = `${FileSystem.documentDirectory}${fileName}`;
           await FileSystem.copyAsync({ from: uri, to: permanentUri });
-          // If no media exists yet, make the first new photo the main one
           const isFirstEver = mediaList.length === 0 && i === 0;
           addMedia(propertyId, permanentUri, 'photo', isFirstEver);
         }
@@ -244,7 +254,6 @@ export default function PropertyDetailsScreen() {
                   <TouchableOpacity style={[styles.actionOverlay, { top: 12, right: 24, backgroundColor: theme.surface }]} onPress={() => shareLocalPhoto(media.uri)}>
                     <Ionicons name="share-social" size={18} color={theme.text} />
                   </TouchableOpacity>
-                  {/* TRASH CAN REMOVED FROM MAIN VIEW */}
                 </View>
               ))}
             </ScrollView>
@@ -260,14 +269,29 @@ export default function PropertyDetailsScreen() {
         </TouchableOpacity>
 
         <View style={styles.statusRow}>
-          {/* 🚨 DYNAMIC STATUS BADGE */}
-          <View style={[styles.statusBadge, { borderWidth: 1, borderColor: status.isOccupied ? theme.danger : status.isReserved ? '#3B82F6' : theme.success }]}>
-            <Text style={[styles.statusText, { color: status.isOccupied ? theme.danger : status.isReserved ? '#3B82F6' : theme.success }]}>
-              {status.isOccupied ? '• Occupied' : status.isReserved ? '• Reserved' : '• Vacant / Available'}
-            </Text>
+          <View style={styles.pillsRow}>
+            {status.isVacant && (
+              <View style={[styles.pill, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                <View style={[styles.pillDot, { backgroundColor: '#10B981' }]} />
+                <Text style={[styles.pillText, { color: '#10B981' }]}>Vacant</Text>
+              </View>
+            )}
+            {status.isOccupied && (
+              <View style={[styles.pill, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
+                <View style={[styles.pillDot, { backgroundColor: '#EF4444' }]} />
+                <Text style={[styles.pillText, { color: '#EF4444' }]}>Occupied</Text>
+              </View>
+            )}
+            {status.isReserved && (
+              <View style={[styles.pill, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
+                <View style={[styles.pillDot, { backgroundColor: '#3B82F6' }]} />
+                <Text style={[styles.pillText, { color: '#3B82F6' }]}>Reserved</Text>
+              </View>
+            )}
           </View>
+
           {!!property.isAirbnb && (
-            <View style={[styles.statusBadge, { backgroundColor: '#FF5A5F' }]}>
+            <View style={[styles.statusBadge, { backgroundColor: '#FF5A5F', marginLeft: 'auto' }]}>
               <FontAwesome5 name="airbnb" size={12} color="#FFFFFF" />
               <Text style={[styles.statusText, { color: '#FFFFFF', marginLeft: 4 }]}>Airbnb Listing</Text>
             </View>
@@ -336,9 +360,27 @@ export default function PropertyDetailsScreen() {
             <View style={[styles.modalContent, { backgroundColor: theme.surface, maxHeight: '85%' }]}>
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: theme.text }]}>Stay Details</Text>
-                <TouchableOpacity onPress={() => setActiveStayDetails(null)}>
-                  <Ionicons name="close" size={26} color={theme.subText} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 16 }}>
+                  {activeStayDetails && (
+                    <>
+                      <TouchableOpacity onPress={() => {
+                        setActiveStayDetails(null);
+                        Alert.alert('Edit Itinerary', 'To modify native dates and times safely, manage this entry directly inside the Stays Hub screen.');
+                      }}>
+                        <Ionicons name="pencil-outline" size={24} color={theme.text} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => {
+                        setActiveStayDetails(null);
+                        Alert.alert('Manage Entry', 'Please drop or remove bookings directly inside the main Active Stays dashboard.');
+                      }}>
+                        <Ionicons name="trash-outline" size={24} color={theme.danger} />
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  <TouchableOpacity onPress={() => setActiveStayDetails(null)}>
+                    <Ionicons name="close" size={26} color={theme.subText} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {activeStayDetails && (
@@ -398,7 +440,6 @@ export default function PropertyDetailsScreen() {
 
             <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
               
-              {/* 🚨 MOVED: Trash Can for Existing Photos is here now! */}
               <View style={styles.mediaSection}>
                 <Text style={[styles.label, { color: theme.text }]}>Manage Photos</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tempGalleryScroll}>
@@ -408,7 +449,6 @@ export default function PropertyDetailsScreen() {
                     <Text style={[styles.addPhotoText, { color: theme.subText }]}>Add</Text>
                   </TouchableOpacity>
                   
-                  {/* Existing DB Photos */}
                   {mediaList.map((media) => (
                     <View key={media.id} style={styles.tempImageContainer}>
                       <Image source={{ uri: media.uri }} style={styles.tempImage} />
@@ -418,7 +458,6 @@ export default function PropertyDetailsScreen() {
                     </View>
                   ))}
 
-                  {/* Newly Picked Photos (Unsaved) */}
                   {tempPhotos.map((uri, index) => (
                     <View key={`temp-${index}`} style={styles.tempImageContainer}>
                       <Image source={{ uri }} style={styles.tempImage} />
@@ -452,11 +491,13 @@ export default function PropertyDetailsScreen() {
 
               <View style={styles.switchRow}>
                 <Text style={[styles.switchLabel, { color: theme.text }]}>Allow Pets?</Text>
+                {/* 🚨 FIXED: Correct state setter is used here now */}
                 <Switch value={editPetsAllowed} onValueChange={setEditPetsAllowed} trackColor={{ false: theme.border, true: theme.success }} />
               </View>
 
               <View style={styles.switchRow}>
                 <Text style={[styles.switchLabel, { color: theme.text }]}>List as Airbnb?</Text>
+                {/* 🚨 FIXED: Correct state setter is used here now */}
                 <Switch value={editIsAirbnb} onValueChange={setEditIsAirbnb} trackColor={{ false: theme.border, true: theme.danger }} />
               </View>
 
@@ -491,9 +532,15 @@ const styles = StyleSheet.create({
   mediaPlaceholderText: { fontSize: 13, marginTop: 8, fontWeight: '500' },
   cloudShareButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, marginBottom: 20, elevation: 2, gap: 8 },
   cloudShareButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  statusRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  pillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  pill: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
+  pillDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
+  pillText: { fontSize: 13, fontWeight: '700' },
   statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
   statusText: { fontSize: 13, fontWeight: '700' },
+
   metaGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16, gap: 10 },
   gridItem: { flex: 1, borderRadius: 12, padding: 12, alignItems: 'center', elevation: 1 },
   gridEmoji: { fontSize: 20, marginBottom: 4 },
@@ -510,7 +557,6 @@ const styles = StyleSheet.create({
   stayLogSubText: { fontSize: 12 },
   emptyStaysText: { fontSize: 13, fontStyle: 'italic' },
   
-  // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -531,7 +577,6 @@ const styles = StyleSheet.create({
   tempImage: { width: 70, height: 70, borderRadius: 8, backgroundColor: '#E2E8F0', resizeMode: 'cover' },
   removeTempPhotoBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#EF4444', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', elevation: 2 },
 
-  // Details Modal
   detailsSectionTitle: { fontSize: 13, textTransform: 'uppercase', fontWeight: '700', letterSpacing: 0.5, marginBottom: 4 },
   detailsTextBody: { fontSize: 16, lineHeight: 24 },
   detailsGrid: { flexDirection: 'row', gap: 12, marginBottom: 16 },
