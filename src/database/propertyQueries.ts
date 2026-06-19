@@ -1,10 +1,7 @@
+import * as Crypto from 'expo-crypto';
 import { Property, Stay } from '../types';
 import { db } from './init';
 
-/**
- * Retrieves all properties from the local database, joining the 
- * primary cover image (where isMain = 1) if one exists.
- */
 export function getProperties(): Property[] {
   try {
     return db.getAllSync<Property>(
@@ -19,13 +16,8 @@ export function getProperties(): Property[] {
   }
 }
 
-/**
- * Retrieves a single property dossier matching the unique ID,
- * attaching its active main cover image.
- */
-export function getPropertyById(id: number): Property | null {
+export function getPropertyById(id: string): Property | null {
   try {
-    // FIXED: Corrected getSync to Expo's valid getFirstSync method
     return db.getFirstSync<Property>(
       `SELECT p.*, m.uri as mainImageUri 
        FROM properties p 
@@ -39,10 +31,6 @@ export function getPropertyById(id: number): Property | null {
   }
 }
 
-/**
- * Persists a new property record inside the database tracking asset capacity.
- * Returns the auto-generated lastInsertRowId to link incoming photos.
- */
 export function addProperty(
   name: string,
   isAirbnb: boolean,
@@ -51,12 +39,14 @@ export function addProperty(
   roomsCount: number,
   maxGuests: number,
   petsAllowed: boolean
-): number {
+): string {
   try {
-    const result = db.runSync(
-      `INSERT INTO properties (name, isAirbnb, address, description, roomsCount, maxGuests, petsAllowed, isActive) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1);`,
+    const id = Crypto.randomUUID(); // GENERATE UNIQUE ID
+    db.runSync(
+      `INSERT INTO properties (id, name, isAirbnb, address, description, roomsCount, maxGuests, petsAllowed, isActive) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1);`,
       [
+        id,
         name, 
         isAirbnb ? 1 : 0, 
         address, 
@@ -66,18 +56,14 @@ export function addProperty(
         petsAllowed ? 1 : 0
       ]
     );
-    return result.lastInsertRowId;
+    return id; // Return the new UUID string
   } catch (error) {
     console.error('Error inserting property asset:', error);
     throw error;
   }
 }
 
-/**
- * Performs a safe cascading purge of a property record along with 
- * its localized media listings and active bookings.
- */
-export function deleteProperty(id: number): void {
+export function deleteProperty(id: string): void {
   try {
     db.runSync('DELETE FROM stays WHERE propertyId = ?;', [id]);
     db.runSync('DELETE FROM property_media WHERE propertyId = ?;', [id]);
@@ -88,10 +74,7 @@ export function deleteProperty(id: number): void {
   }
 }
 
-/**
- * Returns all historical or ongoing stays logged under a targeted property.
- */
-export function getStaysForProperty(propertyId: number): Stay[] {
+export function getStaysForProperty(propertyId: string): Stay[] {
   try {
     return db.getAllSync<Stay>(
       'SELECT * FROM stays WHERE propertyId = ? ORDER BY arrivalDate DESC;',

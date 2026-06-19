@@ -1,5 +1,5 @@
 export interface Property {
-  id: number;
+  id: string;
   name: string;
   isAirbnb: boolean; 
   address: string;
@@ -12,16 +12,16 @@ export interface Property {
 }
 
 export interface PropertyMedia {
-  id: number;
-  propertyId: number;
+  id: string;
+  propertyId: string;
   uri: string;
   mediaType: 'photo' | 'video';
-  isMain: boolean; // NEW
+  isMain: boolean;
 }
 
 export interface Stay {
-  id: number;
-  propertyId: number;
+  id: string;
+  propertyId: string;
   guestCount: number;
   kidsCount: number;
   petsCount: number;
@@ -33,5 +33,5 @@ export interface Stay {
 
 export interface StayWithProperty extends Stay {
   propertyName: string;
-  mainImageUri?: string; // NEW
+  mainImageUri?: string;
 }

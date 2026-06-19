@@ -1,14 +1,12 @@
 import * as SQLite from 'expo-sqlite';
 
-export const db = SQLite.openDatabaseSync('agentaide.db');
+export const db = SQLite.openDatabaseSync('agentaide_v2.db');
 
-// Helper function to safely apply schema upgrades without crashing if they already exist
 const applyMigration = (query: string) => {
   try {
     db.execSync(query);
   } catch (error) {
-    // If the column already exists, SQLite throws an error. We catch and ignore it.
-    // This is a simple, effective migration strategy for local MVP databases.
+    // Silent catch for migrations
   }
 };
 
@@ -19,7 +17,7 @@ export function initializeDatabase() {
       PRAGMA foreign_keys = ON;
 
       CREATE TABLE IF NOT EXISTS properties (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         isAirbnb INTEGER NOT NULL DEFAULT 0,
         address TEXT,
@@ -27,8 +25,8 @@ export function initializeDatabase() {
       );
 
       CREATE TABLE IF NOT EXISTS stays (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        propertyId INTEGER NOT NULL,
+        id TEXT PRIMARY KEY,
+        propertyId TEXT NOT NULL,
         guestCount INTEGER DEFAULT 1,
         kidsCount INTEGER DEFAULT 0,
         petsCount INTEGER DEFAULT 0,
@@ -39,10 +37,9 @@ export function initializeDatabase() {
         FOREIGN KEY (propertyId) REFERENCES properties (id) ON DELETE CASCADE
       );
 
-      -- NEW: Media table to relationally store infinite photos/videos per property
       CREATE TABLE IF NOT EXISTS property_media (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        propertyId INTEGER NOT NULL,
+        id TEXT PRIMARY KEY,
+        propertyId TEXT NOT NULL,
         uri TEXT NOT NULL,
         mediaType TEXT NOT NULL,
         FOREIGN KEY (propertyId) REFERENCES properties (id) ON DELETE CASCADE
@@ -55,8 +52,8 @@ export function initializeDatabase() {
     applyMigration(`ALTER TABLE properties ADD COLUMN petsAllowed INTEGER DEFAULT 0;`);
     applyMigration(`ALTER TABLE property_media ADD COLUMN isMain INTEGER DEFAULT 0;`);
 
-    console.log('Database and schema initialized/migrated successfully.');
+    console.log('Database v2 (UUID) initialized successfully.');
   } catch (error) {
-    console.error('CRITICAL: Failed to initialize database:', error);
+    console.error('CRITICAL: Failed to initialize v2 database:', error);
   }
 }

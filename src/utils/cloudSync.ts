@@ -22,7 +22,8 @@ export async function compressImage(localUri: string): Promise<string> {
   }
 }
 
-export async function uploadToCloud(localUri: string, propertyId: number): Promise<string | null> {
+// CHANGED: propertyId is now a string
+export async function uploadToCloud(localUri: string, propertyId: string): Promise<string | null> {
   try {
     const optimizedUri = await compressImage(localUri);
     const base64File = await FileSystem.readAsStringAsync(optimizedUri, {

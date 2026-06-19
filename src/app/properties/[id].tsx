@@ -32,7 +32,8 @@ export default function PropertyDetailsScreen() {
   const theme = Colors[isDark ? 'dark' : 'light'];
 
   const { id } = useLocalSearchParams();
-  const propertyId = Number(id);
+  // CHANGED: We now safely extract the UUID string instead of parsing it to a Number
+  const propertyId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '';
 
   const [property, setProperty] = useState<Property | null>(null);
   const [stays, setStays] = useState<Stay[]>([]);
@@ -70,14 +71,14 @@ export default function PropertyDetailsScreen() {
     } catch (error) { Alert.alert('Error', 'Failed to save the images.'); }
   };
 
-  const handleSetMain = (mediaId: number) => {
+  const handleSetMain = (mediaId: string) => { // Updated to string
     Alert.alert('Set Main Image', 'Use this photo as the cover for this property?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Set as Cover', onPress: () => { setMainImage(propertyId, mediaId); loadData(); }}
     ]);
   };
 
-  const handleDeletePhoto = (mediaId: number, uri: string) => {
+  const handleDeletePhoto = (mediaId: string, uri: string) => { // Updated to string
     Alert.alert('Delete Photo', 'Remove this image?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
@@ -90,7 +91,6 @@ export default function PropertyDetailsScreen() {
   };
 
   const handleCloudShare = async () => {
-    // If there are no photos, we just share the text and the live Vercel link
     if (mediaList.length === 0) {
       await uploadDossierText(property!, null, []);
       const webUrl = `https://agent-aide-web.vercel.app/property/${propertyId}`;
@@ -103,7 +103,6 @@ export default function PropertyDetailsScreen() {
       let validUrls: string[] = [];
       let coverUrl: string | null = null;
 
-      // Loop and upload all images
       for (const media of mediaList) {
         const uploadedUrl = await uploadToCloud(media.uri, propertyId);
         if (uploadedUrl) {
@@ -114,15 +113,12 @@ export default function PropertyDetailsScreen() {
         }
       }
 
-      // Fallback if no main image was set
       if (!coverUrl && validUrls.length > 0) {
         coverUrl = validUrls[0];
       }
       
-      // Upload text + all image URLs to Supabase
       await uploadDossierText(property!, coverUrl, validUrls);
       
-      // Generate the live Next.js Vercel link and hand it to WhatsApp!
       const webUrl = `https://agent-aide-web.vercel.app/property/${propertyId}`;
       await sharePropertyText(property!, webUrl);
 
