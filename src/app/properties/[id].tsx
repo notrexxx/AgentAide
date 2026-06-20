@@ -1,5 +1,6 @@
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -183,31 +184,64 @@ export default function PropertyDetailsScreen() {
     ]);
   };
 
+  // 🚨 THE FULLY INTEGRATED DUAL-UPLOAD ENGINE
   const handleCloudShare = async () => {
     if (mediaList.length === 0) {
-      await uploadDossierText(property!, null, []);
+      // Pass null for both cover and thumbnail if there are no images
+      await uploadDossierText(property!, null, null, []);
       const webUrl = `https://agent-aide-web.vercel.app/property/${propertyId}`;
       await sharePropertyText(property!, webUrl);
       return;
     }
+
     try {
       setIsUploading(true);
       let validUrls: string[] = [];
       let coverUrl: string | null = null;
+      let thumbnailUrl: string | null = null;
+      let mainMediaUri: string | null = null;
+
+      // 1. Find the main image URI first
+      const mainMedia = mediaList.find(m => m.isMain) || mediaList[0];
+      if (mainMedia) {
+        mainMediaUri = mainMedia.uri;
+      }
+
+      // 2. Process all gallery images normally
       for (const media of mediaList) {
-        const galleryUrl = await uploadToCloud(media.uri, propertyId, false);
+        const isCover = media.uri === mainMediaUri;
+        // Notice the new string flags here instead of booleans
+        const galleryUrl = await uploadToCloud(media.uri, propertyId, isCover ? 'cover' : 'gallery');
+        
         if (galleryUrl) {
           validUrls.push(galleryUrl);
-          if (media.isMain) {
-            coverUrl = await uploadToCloud(media.uri, propertyId, true);
-          }
+          if (isCover) coverUrl = galleryUrl;
         }
       }
+
+      // 3. Generate the specific WhatsApp Open Graph Thumbnail
+      if (mainMediaUri) {
+        // Create the highly compressed 1200x630 clone
+        const manipResult = await ImageManipulator.manipulateAsync(
+          mainMediaUri,
+          [{ resize: { width: 1200 } }],
+          { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG } 
+        );
+        
+        // Upload this special tiny version using the 'thumbnail' flag
+        thumbnailUrl = await uploadToCloud(manipResult.uri, propertyId, 'thumbnail');
+      }
+
+      // Fallbacks just in case something fails mid-upload
       if (!coverUrl && validUrls.length > 0) coverUrl = validUrls[0]; 
+      if (!thumbnailUrl && coverUrl) thumbnailUrl = coverUrl;
       
-      await uploadDossierText(property!, coverUrl, validUrls);
+      // 4. Update Supabase with both High-Res and Thumbnail versions
+      await uploadDossierText(property!, coverUrl, thumbnailUrl, validUrls);
+      
       const webUrl = `https://agent-aide-web.vercel.app/property/${propertyId}?v=${Date.now()}`;
       await sharePropertyText(property!, webUrl);
+      
     } catch (error) {
       Alert.alert('Cloud Sync Failed', 'Sharing offline text dossier instead.', [
         { text: 'Cancel', style: 'cancel' },
@@ -491,13 +525,11 @@ export default function PropertyDetailsScreen() {
 
               <View style={styles.switchRow}>
                 <Text style={[styles.switchLabel, { color: theme.text }]}>Allow Pets?</Text>
-                {/* 🚨 FIXED: Correct state setter is used here now */}
                 <Switch value={editPetsAllowed} onValueChange={setEditPetsAllowed} trackColor={{ false: theme.border, true: theme.success }} />
               </View>
 
               <View style={styles.switchRow}>
                 <Text style={[styles.switchLabel, { color: theme.text }]}>List as Airbnb?</Text>
-                {/* 🚨 FIXED: Correct state setter is used here now */}
                 <Switch value={editIsAirbnb} onValueChange={setEditIsAirbnb} trackColor={{ false: theme.border, true: theme.danger }} />
               </View>
 
